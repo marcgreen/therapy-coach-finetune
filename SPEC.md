@@ -1,0 +1,394 @@
+# Therapeutic Coaching Fine-tuning Project Specification
+
+## Project Goal
+
+Build a **privacy-first, locally-runnable therapeutic coaching model** that:
+- Runs offline on consumer hardware (Mac, Ollama, GGUF)
+- Applies eclectic therapeutic approaches adaptively
+- Feels genuinely helpful for self-care
+- Is open-source for community benefit
+
+**Primary motivations:**
+1. Privacy — personal conversations stay local
+2. Offline capability — no internet required
+3. Cost savings — no ongoing API costs
+4. Customization — behaviors prompting can't achieve
+
+**Success criteria:**
+1. You actually use it for self-care
+2. Measurable improvement on evaluation rubric (p < 0.05)
+3. Conversations feel genuinely helpful, not robotic
+
+---
+
+## Target Model
+
+**Size:** 7B parameters (portable, runs on consumer hardware)
+
+**Deployment targets:**
+- Apple Silicon Macs (MLX, llama.cpp)
+- Ollama
+- GGUF quantized formats
+- Any local inference setup
+
+**Note:** The pipeline supports fine-tuning multiple model sizes for different hardware. 7B is the initial target.
+
+---
+
+## Therapeutic Approach
+
+### Philosophy
+
+- **Adaptive tone** — Matches user's energy (casual when casual, serious when serious)
+- **Eclectic/integrative** — Uses whichever approach fits the situation
+- **Coaching, not therapy** — Supportive self-care tool for mature adults
+- **Safety stance: Acknowledge and hold space** — Validates severity, doesn't overstep, gently suggests resources when appropriate
+
+### Therapeutic Frameworks (9 Styles)
+
+| Framework | Focus |
+|-----------|-------|
+| **CBT** | Cognitive distortions, thought reframing |
+| **DBT** | Distress tolerance, emotional regulation |
+| **ACT** | Acceptance, values-based action |
+| **Motivational Interviewing** | Exploring ambivalence, change talk |
+| **Solution-Focused (SFBT)** | Future-oriented, "what's working" |
+| **Person-Centered/Rogerian** | Unconditional positive regard, reflection |
+| **Positive Psychology** | Strengths, gratitude, meaning |
+| **Compassion-Focused (CFT)** | Self-criticism, developing self-compassion |
+| **Behavioral Activation** | Activity scheduling, breaking avoidance cycles |
+
+### Target Audience
+
+- Mature adults doing self-care
+- Not in active crisis
+- Not a replacement for clinical therapy
+- Self-selected users who want a private coaching tool
+
+---
+
+## 5-SKILL Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  SKILL 1: Domain Knowledge Extractor                                 │
+│  ─────────────────────────────────────                              │
+│  • therapeutic-frameworks.md (expand to 9 approaches)               │
+│  • input-taxonomy.yaml (topics, styles, edge cases)                 │
+│  • evaluation-rubric.md (update for long conversations)             │
+│                                                                      │
+│  Outputs: Domain reference, taxonomy, quality criteria              │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  SKILL 2: Synthetic Data Generator                                   │
+│  ─────────────────────────────────                                  │
+│  • Generate multi-turn conversations from taxonomy                  │
+│  • Use DSPy/GEPA for automated prompt optimization                  │
+│  • Evaluate with rubric, filter at 0.80 threshold                   │
+│  • Target: 1-2K filtered conversations                              │
+│                                                                      │
+│  Outputs: training_data.jsonl, eval_holdout.jsonl                   │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  SKILL 3: Base Model Selector                                        │
+│  ────────────────────────────                                       │
+│  • Research current SOTA for target size                            │
+│  • Consider: license, quality, context, community, quantization     │
+│  • Discuss trade-offs with user                                     │
+│  • Pilot evaluation on sample inputs                                │
+│                                                                      │
+│  Outputs: Selected model + rationale                                │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  SKILL 4: Training (HuggingFace)                                     │
+│  ───────────────────────────────                                    │
+│  • QLoRA fine-tuning via HuggingFace infrastructure                 │
+│  • SFT approach (revisit DPO if needed later)                       │
+│  • Merge adapter weights                                            │
+│  • Export to GGUF for local inference                               │
+│                                                                      │
+│  Outputs: Fine-tuned model, GGUF export                             │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  SKILL 5: Model Evaluator                                            │
+│  ────────────────────────                                           │
+│  • Run baseline vs fine-tuned on held-out set                       │
+│  • Statistical comparison (t-test)                                  │
+│  • Qualitative spot-check                                           │
+│  • Decision: deploy / iterate / try DPO                             │
+│                                                                      │
+│  Outputs: Comparison report, deployment decision                    │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Training Data Specification
+
+### Conversation Length
+
+| Type | Percentage | Turns |
+|------|------------|-------|
+| Medium | 50% | ≤15 turns |
+| Extended | 50% | ≤30 turns |
+
+**Definition:** A "turn" = one user message + one assistant response (a pair).
+- 15 turns = 30 messages total (15 user + 15 assistant)
+- 30 turns = 60 messages total (30 user + 30 assistant)
+
+**No short/single-turn conversations** — realistic coaching sessions are the goal.
+
+### Data Volume
+
+- Generate: ~3-4K raw conversations
+- Filter at 0.80 threshold: ~1.5-2K conversations
+- Token count: 15K-60K turns of training signal
+
+### Data Format (SFT)
+
+```json
+{"messages": [
+  {"role": "system", "content": "You are a supportive therapeutic coach..."},
+  {"role": "user", "content": "I've been feeling really overwhelmed..."},
+  {"role": "assistant", "content": "That sounds exhausting..."},
+  {"role": "user", "content": "Yeah, my boss keeps piling on..."},
+  {"role": "assistant", "content": "The pressure to keep up..."},
+  ...
+]}
+```
+
+### Input Taxonomy
+
+```yaml
+taxonomy:
+  topics:
+    - name: anxiety
+      weight: 0.20
+      subtopics: [work_stress, social, health, general_worry, panic]
+    - name: relationships
+      weight: 0.20
+      subtopics: [romantic, family, friendship, coworker, loneliness]
+    - name: life_transitions
+      weight: 0.15
+      subtopics: [career_change, relocation, loss_grief, new_role, decision]
+    - name: self_worth
+      weight: 0.15
+      subtopics: [confidence, imposter, self_criticism, perfectionism, identity]
+    - name: emotional_regulation
+      weight: 0.15
+      subtopics: [anger, sadness, overwhelm, numbness, mood_swings]
+    - name: edge_cases
+      weight: 0.15
+      subtopics: [crisis_signals, medical_advice, out_of_scope, vague, hostile]
+
+  styles:
+    terse: 0.15
+    conversational: 0.40
+    detailed: 0.25
+    emotional: 0.15
+    analytical: 0.05
+
+  difficulty:
+    easy: 0.30
+    medium: 0.50
+    hard: 0.20
+```
+
+---
+
+## Evaluation Rubric
+
+### Current Structure
+
+**Turn-level (18 criteria):**
+- Comprehension: CP1, CP2*, CP3
+- Connection: CN1, CN2*, CN3, CN4
+- Usefulness: US1, US2*, US3, US4
+- Fit: FT1, FT2, FT3*
+- Safety: SF1, SF2, SF3, SF4*
+
+**Conversation-level (6 criteria):**
+- CV1: Variety in techniques
+- CV2: Natural and warm
+- CV3: Arc progression
+ - CV4: Avoids repetition (extended conversations)
+ - CV5: References earlier parts when relevant (extended conversations)
+ - CV6: Meaningful depth/insight when appropriate (extended conversations)
+
+### Updates Needed for Long Conversations
+
+**Implemented (see `reference/evaluation-rubric.md` + `eval/parallel_evaluator.py`):**
+- CV4: Avoids repetition (for ≥10-turn conversations)
+- CV5: References earlier parts of conversation when relevant (for ≥10-turn conversations)
+- CV6: Reaches meaningful depth/insight when appropriate (for ≥10-turn conversations)
+
+**Conversation weighting by length (implemented):**
+```
+Medium (6-15 turns):   70% turn / 30% conversation
+Extended (16-30 turns): 60% turn / 40% conversation
+```
+
+**Safety stance:**
+- Not a hard gate (100% required)
+- Treated as weighted category
+- Target audience: mature adults, not in crisis
+- Goal: thoughtful boundaries, not paranoid
+
+**Details to be refined during implementation.**
+
+---
+
+## Prompt Optimization
+
+### Approach: DSPy/GEPA
+
+Instead of manual prompt iteration, use automated optimization:
+
+```python
+import dspy
+
+def rubric_metric(example, pred, trace=None):
+    """Returns score + textual feedback for GEPA."""
+    answers, reasonings = evaluate(example.input, pred.response)
+    result = score(answers)
+
+    feedback_parts = []
+    for criterion_id in result.get("failed_checks", []):
+        feedback_parts.append(f"{criterion_id}: {reasonings[criterion_id]}")
+
+    return {
+        "score": result["score"],
+        "feedback": "\n".join(feedback_parts) or "All criteria passed",
+    }
+
+optimizer = dspy.GEPA(
+    metric=rubric_metric,
+    reflection_lm=dspy.LM("claude-sonnet-4-20250514"),
+    auto="light",  # Fast for weekend timeline
+)
+
+optimized = optimizer.compile(
+    GenerateConversation(),
+    trainset=pilot_inputs,
+    valset=validation_inputs,
+)
+```
+
+**Why GEPA:**
+- Uses textual feedback from rubric (not just scores)
+- Pareto frontier maintains diverse solutions
+- 35x more sample-efficient than alternatives
+
+---
+
+## Base Model Candidates
+
+| Model | Size | Context | License | Notes |
+|-------|------|---------|---------|-------|
+| Qwen 2.5 7B Instruct | 7B | 128K | Apache 2.0 | Strong chat, good multilingual |
+| Llama 3.1 8B Instruct | 8B | 128K | Llama 3.1 | Large community, proven |
+| Mistral 7B Instruct v0.3 | 7B | 32K | Apache 2.0 | Efficient, shorter context |
+
+**Selection criteria:**
+1. Context length (32K sufficient for 30-turn conversations; ~14K tokens typical)
+2. Existing chat quality
+3. License (open-source friendly)
+4. GGUF/quantization support
+5. Community tooling
+
+**Context calculation:**
+- 30 turns × 2 messages × ~200 tokens = ~12K tokens
+- + ~2K system prompt = ~14K tokens
+- 32K context provides comfortable 2x margin
+
+**Decision:** Quick research + pilot evaluation on 50 examples.
+
+---
+
+## Weekend Execution Plan
+
+### Day 1 (Saturday)
+
+| Time | Task |
+|------|------|
+| Morning | Expand therapeutic-frameworks.md (9 styles) |
+| Morning | Create input-taxonomy.yaml |
+| Midday | Quick base model research, select one |
+| Midday | Generate 100 pilot conversations |
+| Afternoon | Run GEPA optimization (automated) |
+| Evening | Scale to 1.5-2K with optimized prompts |
+
+### Day 2 (Sunday)
+
+| Time | Task |
+|------|------|
+| Morning | Final data filtering and validation |
+| Morning | Submit HuggingFace training job |
+| Midday | (Training runs ~2-4 hours) |
+| Afternoon | Run evaluation comparison |
+| Afternoon | Export GGUF, test locally |
+| Evening | Document SKILLs, wrap up |
+
+---
+
+## Deliverables
+
+### Code/Data
+- `config/input-taxonomy.yaml` — Therapeutic input distribution
+- `config/generation-prompt.md` — Optimized generation prompt
+- `data/training_data.jsonl` — Filtered training conversations
+- `data/eval_holdout.jsonl` — Held-out evaluation set
+- Fine-tuned model on HuggingFace Hub
+- GGUF export for local inference
+
+### Documentation
+- Updated `reference/therapeutic-frameworks.md` (9 styles)
+- Updated `reference/evaluation-rubric.md` (long conversation support)
+- SKILL documentation for all 5 skills
+- `reports/comparison_report.md` — Final evaluation
+
+---
+
+## Success Metrics
+
+| Metric | Target |
+|--------|--------|
+| Personal use | Would you open it when stressed? |
+| Rubric improvement | +10-20% over base model |
+| Statistical significance | p < 0.05 |
+| Qualitative feel | Genuinely helpful, not robotic |
+| Safety | Handles boundaries thoughtfully |
+
+---
+
+## Open Questions (To Resolve During Implementation)
+
+1. Final base model selection (after pilot)
+2. Optimal conversation length distribution
+3. Whether to pursue DPO after SFT
+
+---
+
+## What's Already Done
+
+| Artifact | Status |
+|----------|--------|
+| Evaluation rubric (18+6 criteria) | ✅ Complete |
+| `parallel_evaluator.py` | ✅ Complete |
+| `therapeutic-frameworks.md` (9 styles) | ✅ Complete |
+| Data generation skill | ✅ Complete |
+| Training methods guide | ✅ Complete |
+| Input taxonomy template | ✅ Needs therapeutic config |
+
+---
+
+*Last updated: December 2024*
+*Timeline: Weekend project*
