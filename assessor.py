@@ -243,6 +243,18 @@ NA if conversation is < 10 turns, or user explored unrelated topics.""",
     ),
 ]
 
+JUDGE_SYSTEM_WRAPPER = """You are an expert evaluator scoring an assistant's full multi-turn conversation against ONE criterion.
+
+Follow the criterion instructions exactly.
+
+Output format rules:
+- Return ONLY a single JSON object matching the provided schema.
+- The JSON must have exactly these keys: "reasoning", "answer".
+- "answer" must be exactly one of: "YES", "NO", "NA".
+- "reasoning" must be brief (1–2 sentences, <= 300 characters), and should cite specific turn numbers (e.g., "Turn 3") when possible.
+- Do not include any other text, markdown, or keys.
+"""
+
 
 def format_conversation(conversation: list[ConversationTurn]) -> str:
     """Format a multi-turn conversation for assessment."""
@@ -268,16 +280,25 @@ async def assess_criterion(
     """Assess a single criterion against the full conversation."""
     formatted = format_conversation(conversation)
 
-    system_msg: EasyInputMessageParam = {"role": "system", "content": criterion.prompt}
+    system_prompt = (
+        f"{JUDGE_SYSTEM_WRAPPER}\n\n"
+        f"Criterion ID: {criterion.id}\n"
+        f"Category: {criterion.category}\n\n"
+        f"{criterion.prompt}"
+    )
+    system_msg: EasyInputMessageParam = {"role": "system", "content": system_prompt}
     user_msg: EasyInputMessageParam = {
         "role": "user",
-        "content": f"Assess this conversation:\n\n{formatted}",
+        "content": f"Assess the conversation below.\n\n{formatted}\n\nReturn the JSON now.",
     }
 
     response = await client.responses.parse(
         model="gpt-5.2-mini",
         input=[system_msg, user_msg],
         text_format=AssessmentAnswer,
+        reasoning={"effort": "medium"},
+        verbosity="low",
+        max_output_tokens=200,
     )
 
     result = response.output_parsed
