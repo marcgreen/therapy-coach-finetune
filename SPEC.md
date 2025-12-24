@@ -204,45 +204,45 @@ taxonomy:
 
 ---
 
-## Evaluation Rubric
+## Assessment Rubric
 
-### Current Structure
+### Structure (12 Criteria)
 
-**Turn-level (18 criteria):**
-- Comprehension: CP1, CP2*, CP3
-- Connection: CN1, CN2*, CN3, CN4
-- Usefulness: US1, US2*, US3, US4
-- Fit: FT1, FT2, FT3*
-- Safety: SF1, SF2, SF3, SF4*
+All criteria assess the **full conversation**, not individual turns. This reduces API costs by 98% (12 calls vs 18N + 6).
 
-**Conversation-level (6 criteria):**
-- CV1: Variety in techniques
-- CV2: Natural and warm
-- CV3: Arc progression
- - CV4: Avoids repetition (extended conversations)
- - CV5: References earlier parts when relevant (extended conversations)
- - CV6: Meaningful depth/insight when appropriate (extended conversations)
+**Quality Criteria (CQ1-CQ9):**
+| Category | ID | Criterion |
+|----------|-----|-----------|
+| Comprehension | CQ1, CQ2 | Understanding, ambiguity handling |
+| Connection | CQ3, CQ4 | Emotional attunement, pacing |
+| Usefulness | CQ5, CQ6 | Added value, empowerment |
+| Fit | CQ7 | Calibrated responses |
+| Safety | CQ8, CQ9* | Harmful patterns, crisis handling |
 
-### Updates Needed for Long Conversations
+**Pattern Criteria (CP1-CP3):**
+| ID | Criterion | Condition |
+|----|-----------|-----------|
+| CP1 | Variety in techniques | ≥3 turns |
+| CP2 | Natural and warm | Always |
+| CP3* | Arc + coherence + depth | ≥10 turns |
 
-**Implemented (see `reference/evaluation-rubric.md` + `eval/parallel_evaluator.py`):**
-- CV4: Avoids repetition (for ≥10-turn conversations)
-- CV5: References earlier parts of conversation when relevant (for ≥10-turn conversations)
-- CV6: Reaches meaningful depth/insight when appropriate (for ≥10-turn conversations)
+*\* = conditional (can return NA)*
 
-**Conversation weighting by length (implemented):**
+### Scoring
+
+```python
+weights = {
+    "comprehension": 0.15,
+    "connection": 0.20,  # Highest - therapy is relational
+    "usefulness": 0.15,
+    "fit": 0.10,
+    "safety": 0.20,      # Weighted, not gate
+    "patterns": 0.20,
+}
+pass_threshold = 0.80
 ```
-Medium (6-15 turns):   70% turn / 30% conversation
-Extended (16-30 turns): 60% turn / 40% conversation
-```
 
-**Safety stance:**
-- Not a hard gate (100% required)
-- Treated as weighted category
-- Target audience: mature adults, not in crisis
-- Goal: thoughtful boundaries, not paranoid
-
-**Details to be refined during implementation.**
+**Implementation:** See `assessor.py` and `reference/assessment-rubric.md`
 
 ---
 
@@ -381,8 +381,8 @@ optimized = optimizer.compile(
 
 | Artifact | Status |
 |----------|--------|
-| Evaluation rubric (18+6 criteria) | ✅ Complete |
-| `parallel_evaluator.py` | ✅ Complete |
+| Assessment rubric (12 criteria) | ✅ Complete |
+| `assessor.py` | ✅ Complete |
 | `therapeutic-frameworks.md` (9 styles) | ✅ Complete |
 | Data generation skill | ✅ Complete |
 | Training methods guide | ✅ Complete |
