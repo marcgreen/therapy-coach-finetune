@@ -89,6 +89,22 @@ def process(items, config=None):
 - Follow existing patterns in `assessor.py`
 - Docstrings for public functions and classes
 
+### Type Safety
+
+- **`cast()` is a code smell.** If you're casting, ask: "what bug am I potentially hiding?"
+- When `cast()` is unavoidable (e.g., Python can't narrow `Literal` types in lists), add runtime validation:
+
+```python
+# Bad: cast hides typos
+cast(CriterionAnswer, "YESS")  # No error, but wrong
+
+# Good: validate then cast
+VALID = {"YES", "NO", "NA", "ERROR"}
+if ans not in VALID:
+    raise ValueError(f"Invalid: {ans}")
+cast(CriterionAnswer, ans)  # Now safe
+```
+
 ### Async
 
 - Use `asyncio` for concurrent I/O operations
