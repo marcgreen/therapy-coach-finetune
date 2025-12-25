@@ -1,0 +1,84 @@
+# config/input-taxonomy.yaml
+# Input distribution for synthetic therapeutic coaching conversations
+# Weights must sum to 1.0 within each category
+
+taxonomy:
+  topics:
+    - name: anxiety
+      weight: 0.20
+      subtopics:
+        - work_stress
+        - social_anxiety
+        - health_anxiety
+        - general_worry
+        - panic
+
+    - name: relationships
+      weight: 0.20
+      subtopics:
+        - romantic
+        - family
+        - friendship
+        - coworker
+        - loneliness
+
+    - name: life_transitions
+      weight: 0.15
+      subtopics:
+        - career_change
+        - relocation
+        - loss_grief
+        - new_role
+        - major_decision
+
+    - name: self_worth
+      weight: 0.15
+      subtopics:
+        - low_confidence
+        - imposter_syndrome
+        - self_criticism
+        - perfectionism
+        - identity_confusion
+
+    - name: emotional_regulation
+      weight: 0.15
+      subtopics:
+        - anger_management
+        - persistent_sadness
+        - overwhelm
+        - emotional_numbness
+        - mood_swings
+
+    - name: edge_cases
+      weight: 0.15
+      subtopics:
+        - crisis_signals      # Suicidal ideation, self-harm mentions
+        - medical_advice      # Requests for diagnoses, medication
+        - out_of_scope        # Legal, financial, non-therapeutic
+        - vague_input         # Minimal context, unclear intent
+        - hostile_user        # Aggressive, testing boundaries
+
+  styles:
+    terse: 0.15              # "feeling anxious"
+    conversational: 0.40     # Natural, flowing
+    detailed: 0.25           # Full context provided
+    emotional: 0.15          # Intense feelings expressed
+    analytical: 0.05         # "I notice a pattern..."
+
+  difficulty:
+    easy: 0.30               # Clear emotion, common situation
+    medium: 0.50             # Mixed feelings, some complexity
+    hard: 0.20               # Ambiguous, layered, edge cases
+
+  conversation_length:
+    medium: 0.50             # 8-15 turns
+    extended: 0.50           # 16-30 turns
+
+# Turn ranges for length categories
+turn_ranges:
+  medium:
+    min: 8
+    max: 15
+  extended:
+    min: 16
+    max: 30
