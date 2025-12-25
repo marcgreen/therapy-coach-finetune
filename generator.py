@@ -42,6 +42,8 @@ class TaxonomyConfig:
     style: str
     difficulty: str
     target_turns: int
+    interaction_cadence: str  # frequent_short or infrequent_detailed
+    help_seeking: str  # explicit or implicit
 
 
 def load_taxonomy(path: Path = Path("config/input-taxonomy.yaml")) -> dict:
@@ -70,12 +72,19 @@ def sample_config(taxonomy: dict) -> TaxonomyConfig:
         list(difficulties.keys()), weights=list(difficulties.values()), k=1
     )[0]
 
-    lengths = taxonomy["taxonomy"]["conversation_length"]
-    length_category = random.choices(
-        list(lengths.keys()), weights=list(lengths.values()), k=1
+    # Sample interaction cadence and help-seeking behavior
+    cadences = taxonomy["taxonomy"]["interaction_cadence"]
+    cadence = random.choices(
+        list(cadences.keys()), weights=list(cadences.values()), k=1
     )[0]
 
-    turn_range = taxonomy["turn_ranges"][length_category]
+    help_seeking_opts = taxonomy["taxonomy"]["help_seeking"]
+    help_seeking = random.choices(
+        list(help_seeking_opts.keys()), weights=list(help_seeking_opts.values()), k=1
+    )[0]
+
+    # Turn count depends on interaction cadence
+    turn_range = taxonomy["turn_ranges"][cadence]
     target_turns = random.randint(turn_range["min"], turn_range["max"])
 
     return TaxonomyConfig(
@@ -84,6 +93,8 @@ def sample_config(taxonomy: dict) -> TaxonomyConfig:
         style=style,
         difficulty=difficulty,
         target_turns=target_turns,
+        interaction_cadence=cadence,
+        help_seeking=help_seeking,
     )
 
 
@@ -97,7 +108,7 @@ class Turn(BaseModel):
 
     user: str = Field(description="What the client says")
     assistant: str = Field(
-        description="Coach's response (1-3 sentences, warm, concise)"
+        description="Coach's response - length should match the client's cadence"
     )
 
 
@@ -117,6 +128,8 @@ SCENARIO:
 - Topic: {topic} ({subtopic})
 - Client communication style: {style}
 - Complexity: {difficulty}
+- Interaction cadence: {cadence}
+- Help-seeking style: {help_seeking}
 
 CLIENT STYLES:
 - terse: Short messages, few words
@@ -125,19 +138,28 @@ CLIENT STYLES:
 - emotional: Expresses intense feelings
 - analytical: Notices patterns, systematic
 
+INTERACTION CADENCE:
+- frequent_short: Quick back-and-forth, short messages on both sides
+- infrequent_detailed: Client sends one long, detailed message (like a journal entry). Coach responds with equally substantial reflection and guidance. Few turns but each is meaty.
+
+HELP-SEEKING STYLE:
+- explicit: Client directly asks questions ("What should I do?", "Can you help?")
+- implicit: Client expresses feelings and experiences without asking questions. They're implicitly looking for guidance but don't request it. Coach offers perspective and gentle suggestions naturally.
+
 COACH GUIDELINES:
-- 1-3 sentences per response (be concise!)
-- Validate before advising
-- Ask questions to understand
+- Match message length to client's cadence
+- Skip formulaic validation ("That sounds hard", "I hear you"). Just respond naturally.
+- Ask questions sparingly - often guidance is more helpful than another question
 - Return agency to the client
 - Warm and natural, not clinical
+- If client isn't asking questions, don't bombard them with questions either
 
 CONVERSATION ARC:
-- Early: Client shares problem, coach validates and explores
+- Early: Client shares what's on their mind
 - Middle: Deeper understanding, gentle insights
 - Late: Small realizations, concrete next steps
 
-Generate a natural, helpful conversation. Coach responses should be SHORT."""
+Generate a natural, human conversation. Avoid AI tells like constant validation or ending every response with a question."""
 
 
 _api_retry = retry(
@@ -160,6 +182,8 @@ async def generate_conversation(
         subtopic=config.subtopic,
         style=config.style,
         difficulty=config.difficulty,
+        cadence=config.interaction_cadence,
+        help_seeking=config.help_seeking,
     )
 
     user_msg: EasyInputMessageParam = {"role": "user", "content": prompt}
@@ -241,6 +265,8 @@ async def generate_batch(
                     "subtopic": config.subtopic,
                     "style": config.style,
                     "difficulty": config.difficulty,
+                    "interaction_cadence": config.interaction_cadence,
+                    "help_seeking": config.help_seeking,
                     "turns": len(conversation.turns),
                 },
             }
