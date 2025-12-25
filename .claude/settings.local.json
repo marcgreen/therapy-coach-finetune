@@ -8,7 +8,8 @@
       "Bash(uv run ruff:*)",
       "Bash(uv run:*)",
       "Skill(superpowers:writing-skills)",
-      "WebFetch(domain:dspy.ai)"
+      "WebFetch(domain:dspy.ai)",
+      "WebFetch(domain:platform.openai.com)"
     ]
   }
 }
