@@ -7,10 +7,12 @@ This gives 98% cost reduction while maintaining quality signal for training data
 
 import asyncio
 import json
+import logging
 import sys
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 from openai.types.responses import EasyInputMessageParam
@@ -21,6 +23,176 @@ from tenacity import (
     wait_random_exponential,
     retry_if_exception_type,
 )
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+
+logger = logging.getLogger(__name__)
+
+
+def setup_logging(level: int = logging.INFO) -> None:
+    """Configure logging for the assessor module.
+
+    Call this before running assessments to see progress logs.
+    """
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+
+# =============================================================================
+# Module-level OpenAI Client Singleton
+# =============================================================================
+
+_client: AsyncOpenAI | None = None
+_client_api_key: str | None = None
+
+
+def get_client(api_key: str | None = None) -> AsyncOpenAI:
+    """Get or create the module-level AsyncOpenAI client singleton.
+
+    The client is recreated if a different api_key is provided.
+    """
+    global _client, _client_api_key
+
+    if api_key != _client_api_key or _client is None:
+        logger.debug("Creating new AsyncOpenAI client")
+        _client = AsyncOpenAI(api_key=api_key)
+        _client_api_key = api_key
+
+    return _client
+
+
+# =============================================================================
+# Rate Limiter (gpt-5.2-mini: 500k TPM, 500 RPM, 5M TPD)
+# =============================================================================
+
+
+@dataclass
+class RateLimiter:
+    """Token and request rate limiter with sliding window.
+
+    Limits for gpt-5.2-mini:
+        - 500,000 tokens per minute (TPM)
+        - 500 requests per minute (RPM)
+        - 5,000,000 tokens per day (TPD)
+    """
+
+    tpm_limit: int = 500_000
+    rpm_limit: int = 500
+    tpd_limit: int = 5_000_000
+
+    # Sliding window state (initialized in __post_init__)
+    _minute_tokens: list[tuple[float, int]] = field(default_factory=list)
+    _minute_requests: list[float] = field(default_factory=list)
+    _day_tokens: list[tuple[float, int]] = field(default_factory=list)
+    _lock: asyncio.Lock | None = field(default=None)
+
+    def __post_init__(self) -> None:
+        # Create lock lazily to avoid issues with dataclass defaults
+        if self._lock is None:
+            object.__setattr__(self, "_lock", asyncio.Lock())
+
+    def _clean_request_window(self, window: list[float], cutoff: float) -> list[float]:
+        """Remove request timestamps older than cutoff."""
+        return [ts for ts in window if ts > cutoff]
+
+    def _clean_token_window(
+        self, window: list[tuple[float, int]], cutoff: float
+    ) -> list[tuple[float, int]]:
+        """Remove token entries older than cutoff."""
+        return [(ts, tokens) for ts, tokens in window if ts > cutoff]
+
+    def _sum_tokens(self, window: list[tuple[float, int]]) -> int:
+        """Sum tokens in window."""
+        return sum(tokens for _, tokens in window)
+
+    async def acquire(self, estimated_tokens: int = 1000) -> None:
+        """Wait until rate limits allow the request.
+
+        Args:
+            estimated_tokens: Estimated tokens for this request (input + output)
+        """
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
+        async with self._lock:
+            while True:
+                now = time.time()
+                minute_ago = now - 60
+                day_ago = now - 86400
+
+                # Clean old entries
+                self._minute_tokens = self._clean_token_window(
+                    self._minute_tokens, minute_ago
+                )
+                self._minute_requests = self._clean_request_window(
+                    self._minute_requests, minute_ago
+                )
+                self._day_tokens = self._clean_token_window(self._day_tokens, day_ago)
+
+                current_tpm = self._sum_tokens(self._minute_tokens)
+                current_rpm = len(self._minute_requests)
+                current_tpd = self._sum_tokens(self._day_tokens)
+
+                # Check if we can proceed
+                can_proceed = (
+                    current_tpm + estimated_tokens <= self.tpm_limit
+                    and current_rpm + 1 <= self.rpm_limit
+                    and current_tpd + estimated_tokens <= self.tpd_limit
+                )
+
+                if can_proceed:
+                    # Record this request
+                    self._minute_tokens.append((now, estimated_tokens))
+                    self._minute_requests.append(now)
+                    self._day_tokens.append((now, estimated_tokens))
+                    return
+
+                # Calculate wait time based on which limit is hit
+                if current_rpm + 1 > self.rpm_limit and self._minute_requests:
+                    wait_time = self._minute_requests[0] - minute_ago + 0.1
+                elif (
+                    current_tpm + estimated_tokens > self.tpm_limit
+                    and self._minute_tokens
+                ):
+                    wait_time = self._minute_tokens[0][0] - minute_ago + 0.1
+                elif self._day_tokens:
+                    # TPD limit hit - wait for oldest daily entry to expire
+                    wait_time = min(60.0, self._day_tokens[0][0] - day_ago + 0.1)
+                else:
+                    wait_time = 1.0
+
+                logger.debug(
+                    f"Rate limit: TPM={current_tpm}/{self.tpm_limit}, "
+                    f"RPM={current_rpm}/{self.rpm_limit}, "
+                    f"TPD={current_tpd}/{self.tpd_limit}. "
+                    f"Waiting {wait_time:.1f}s"
+                )
+                await asyncio.sleep(max(0.1, wait_time))
+
+
+# Module-level rate limiter singleton
+_rate_limiter: RateLimiter | None = None
+
+
+def get_rate_limiter() -> RateLimiter:
+    """Get or create the module-level rate limiter singleton."""
+    global _rate_limiter
+    if _rate_limiter is None:
+        _rate_limiter = RateLimiter()
+    return _rate_limiter
+
+
+# =============================================================================
+# Progress Callback Type
+# =============================================================================
+
+# Called with (conversation_id, current_index, total_count, result_or_none)
+ProgressCallback = Callable[[str, int, int, "AssessmentResult | None"], None]
 
 
 CriterionAnswer = Literal["YES", "NO", "NA", "ERROR"]
@@ -154,6 +326,11 @@ CATEGORY_WEIGHTS: dict[str, float] = {
 PASS_THRESHOLD = 0.80
 # Minimum turns for meaningful quality assessment (aligns with SPEC: "no short/single-turn")
 MIN_TURNS_FOR_ASSESSMENT = 3
+
+# Safety criteria where NA is NOT valid (judge should never return NA)
+# CQ8: "NA is not valid for this criterion - always assess"
+# CQ9: "NA if no crisis signals are present" - NA IS valid for CQ9
+SAFETY_CRITERIA_NA_INVALID: frozenset[str] = frozenset({"CQ8"})
 
 
 # All 12 criteria - assess full conversation, not individual turns
@@ -395,10 +572,11 @@ class AssessmentResult:
     failed_safety: list[str]
     safety_gate_failed: bool
     error_count: int
+    conversation_id: str | None = None  # For tracking and checkpointing
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result: dict = {
             "pass": self.passed,
             "score": round(self.score, 3),
             "threshold": self.threshold,
@@ -413,6 +591,9 @@ class AssessmentResult:
             "error_count": self.error_count,
             "weights": CATEGORY_WEIGHTS,
         }
+        if self.conversation_id is not None:
+            result["conversation_id"] = self.conversation_id
+        return result
 
 
 def format_conversation(conversation: ConversationInput) -> str:
@@ -433,6 +614,10 @@ def format_conversation(conversation: ConversationInput) -> str:
     return "\n".join(formatted)
 
 
+# Estimated tokens per criterion assessment (conservative estimate)
+TOKENS_PER_CRITERION = 2000  # ~1500 input + ~200 output + buffer
+
+
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_random_exponential(
@@ -444,8 +629,13 @@ async def assess_criterion(
     client: AsyncOpenAI,
     criterion: Criterion,
     conversation: ConversationInput,
+    rate_limiter: RateLimiter | None = None,
 ) -> tuple[str, CriterionAnswer, str]:
     """Assess a single criterion against the full conversation."""
+    # Acquire rate limit before making API call
+    if rate_limiter is not None:
+        await rate_limiter.acquire(TOKENS_PER_CRITERION)
+
     formatted = format_conversation(conversation)
 
     system_prompt = (
@@ -460,6 +650,8 @@ async def assess_criterion(
         "content": f"Assess the conversation below.\n\n{formatted}\n\nReturn the JSON now.",
     }
 
+    logger.debug(f"Assessing criterion {criterion.id}")
+
     response = await client.responses.parse(
         model="gpt-5.2-mini",
         input=[system_msg, user_msg],
@@ -472,6 +664,8 @@ async def assess_criterion(
     result = response.output_parsed
     if result is None:
         raise ValueError(f"Failed to parse response for {criterion.id}")
+
+    logger.debug(f"Criterion {criterion.id}: {result.answer}")
     return (criterion.id, result.answer, result.reasoning)
 
 
@@ -483,14 +677,24 @@ def get_applicable_criteria(turn_count: int) -> list[Criterion]:
 def compute_score(
     results: list[tuple[str, CriterionAnswer, str]],
     criteria: list[Criterion],
+    conversation_id: str | None = None,
 ) -> AssessmentResult:
-    """Score assessment results with safety gate."""
+    """Score assessment results with safety gate.
+
+    Safety gate logic:
+    - CQ8 (harmful patterns): NA is NOT valid - if judge returns NA, treat as failure
+    - CQ9 (crisis handling): NA IS valid when no crisis signals present
+    - Any NO or ERROR on safety criteria = automatic failure
+    """
     # Build answers dict
     answers: dict[str, CriterionAnswer] = {cid: ans for cid, ans, _ in results}
     reasonings: dict[str, str] = {cid: reason for cid, _, reason in results}
 
     # Count errors (these are real failures, not passes)
     error_count = sum(1 for ans in answers.values() if ans == "ERROR")
+
+    # Safety criteria IDs
+    safety_ids = set(CATEGORY_CRITERIA["safety"])
 
     # Score each category
     def category_score(cat: str) -> float:
@@ -506,7 +710,16 @@ def compute_score(
             if ans == "YES":
                 scores.append(1.0)
             elif ans == "NA":
-                scores.append(1.0)  # NA counts as pass (criterion doesn't apply)
+                # Only certain safety criteria have invalid NA (see SAFETY_CRITERIA_NA_INVALID)
+                # CQ8: NA is invalid (should always assess)
+                # CQ9: NA is valid (no crisis signals present)
+                if cid in SAFETY_CRITERIA_NA_INVALID:
+                    logger.warning(
+                        f"Safety criterion {cid} returned NA (invalid) - treating as failure"
+                    )
+                    scores.append(0.0)
+                else:
+                    scores.append(1.0)  # NA is valid for this criterion
             elif ans == "ERROR":
                 scores.append(0.0)  # Errors are failures, not passes
             else:  # NO
@@ -518,13 +731,31 @@ def compute_score(
     # Weighted final score
     final_score = sum(category_scores[cat] * w for cat, w in CATEGORY_WEIGHTS.items())
 
-    # Failed checks (NO or ERROR)
-    failed = [cid for cid, ans in answers.items() if ans in ("NO", "ERROR")]
+    # Failed checks: NO, ERROR, or invalid NA
+    failed = []
+    for cid, ans in answers.items():
+        if ans in ("NO", "ERROR"):
+            failed.append(cid)
+        elif ans == "NA" and cid in SAFETY_CRITERIA_NA_INVALID:
+            failed.append(cid)  # Invalid NA is a failure
 
-    # Safety gate check - any safety failure = automatic fail
-    safety_ids = CATEGORY_CRITERIA["safety"]
-    failed_safety = [cid for cid in safety_ids if answers.get(cid) in ("NO", "ERROR")]
+    # Safety gate check - triggers on:
+    # - NO or ERROR for any safety criterion
+    # - NA for safety criteria where NA is invalid (only CQ8)
+    failed_safety = []
+    for cid in safety_ids:
+        ans = answers.get(cid)
+        if ans in ("NO", "ERROR"):
+            failed_safety.append(cid)
+        elif ans == "NA" and cid in SAFETY_CRITERIA_NA_INVALID:
+            failed_safety.append(cid)
     safety_gate_failed = len(failed_safety) > 0
+
+    if safety_gate_failed:
+        logger.info(
+            f"Safety gate failed for conversation {conversation_id or 'unknown'}: "
+            f"{failed_safety}"
+        )
 
     # Final pass decision: must pass threshold AND safety gate
     passed = (final_score >= PASS_THRESHOLD) and not safety_gate_failed
@@ -540,6 +771,7 @@ def compute_score(
         failed_safety=failed_safety,
         safety_gate_failed=safety_gate_failed,
         error_count=error_count,
+        conversation_id=conversation_id,
     )
 
 
@@ -547,6 +779,8 @@ async def assess_conversation(
     conversation: ConversationInput,
     api_key: str | None = None,
     require_min_turns: bool = True,
+    conversation_id: str | None = None,
+    use_rate_limiter: bool = True,
 ) -> AssessmentResult:
     """
     Assess a full conversation with 12 criteria.
@@ -555,6 +789,8 @@ async def assess_conversation(
         conversation: Validated conversation input
         api_key: Optional OpenAI API key (defaults to env var)
         require_min_turns: If True, reject conversations below MIN_TURNS_FOR_ASSESSMENT
+        conversation_id: Optional identifier for tracking and checkpointing
+        use_rate_limiter: If True, use the module-level rate limiter
 
     Returns:
         AssessmentResult with pass/fail, score, category breakdown, and per-criterion details
@@ -575,11 +811,22 @@ async def assess_conversation(
             f"to override (not recommended for training data)."
         )
 
-    client = AsyncOpenAI(api_key=api_key)
+    # Use module-level singleton client
+    client = get_client(api_key)
     applicable = get_applicable_criteria(turn_count)
 
+    # Get rate limiter if enabled
+    rate_limiter = get_rate_limiter() if use_rate_limiter else None
+
+    logger.info(
+        f"Assessing conversation {conversation_id or 'unknown'} "
+        f"({turn_count} turns, {len(applicable)} criteria)"
+    )
+
     # Run all assessments in parallel
-    tasks = [assess_criterion(client, c, conversation) for c in applicable]
+    tasks = [
+        assess_criterion(client, c, conversation, rate_limiter) for c in applicable
+    ]
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Process results - errors become ERROR status, NOT NA
@@ -588,18 +835,320 @@ async def assess_conversation(
         criterion = applicable[i]
         if isinstance(result, BaseException):
             error_msg = f"Assessment failed: {type(result).__name__}: {result}"
+            logger.warning(f"Criterion {criterion.id} error: {error_msg}")
             # Mark as ERROR - this will count as a failure, not a pass
             results.append((criterion.id, "ERROR", error_msg))
         else:
             # result is tuple[str, CriterionAnswer, str]
             results.append(result)
 
-    return compute_score(results, applicable)
+    return compute_score(results, applicable, conversation_id)
+
+
+# =============================================================================
+# Batch Processing with Checkpointing
+# =============================================================================
+
+
+@dataclass
+class BatchProgress:
+    """Tracks batch assessment progress.
+
+    Note on resume behavior:
+        When resuming from checkpoint, `completed` is initialized to the count of
+        already-processed conversations. This means:
+
+        - `pass_rate` reflects only newly processed conversations (not historical)
+        - `conversations_per_minute` will be artificially high initially after resume
+          because `completed` includes historical work but `elapsed_seconds` starts at 0
+
+        For accurate throughput after resume, wait until enough new conversations are
+        processed to dominate the historical count, or track new_completed separately.
+
+    Thread safety:
+        The record() method is NOT thread-safe. When called from multiple concurrent
+        tasks, counts may be slightly inaccurate. This is acceptable for progress
+        logging but not for precise accounting.
+    """
+
+    total: int
+    completed: int = 0
+    passed: int = 0
+    failed: int = 0
+    errors: int = 0
+    start_time: float = field(default_factory=time.time)
+    _initial_completed: int = field(default=0, repr=False)  # For accurate rate calc
+
+    @property
+    def pass_rate(self) -> float:
+        """Pass rate of processed conversations (excluding checkpointed ones on resume)."""
+        processed = self.completed - self._initial_completed
+        if processed == 0:
+            return 0.0
+        return self.passed / processed
+
+    @property
+    def elapsed_seconds(self) -> float:
+        return time.time() - self.start_time
+
+    @property
+    def conversations_per_minute(self) -> float:
+        """Processing rate for THIS run (excludes checkpointed conversations)."""
+        if self.elapsed_seconds < 1:
+            return 0.0
+        new_completed = self.completed - self._initial_completed
+        return (new_completed / self.elapsed_seconds) * 60
+
+    def record(self, result: AssessmentResult) -> None:
+        """Record a completed assessment. NOT thread-safe."""
+        self.completed += 1
+        if result.passed:
+            self.passed += 1
+        else:
+            self.failed += 1
+        if result.error_count > 0:
+            self.errors += 1
+
+    def summary(self) -> str:
+        new_completed = self.completed - self._initial_completed
+        return (
+            f"Progress: {self.completed}/{self.total} "
+            f"({new_completed} new, {self.pass_rate:.1%} pass rate, "
+            f"{self.conversations_per_minute:.1f} conv/min)"
+        )
+
+
+def load_checkpoint(checkpoint_path: Path) -> set[str]:
+    """Load completed conversation IDs from checkpoint file.
+
+    Returns set of conversation_ids that have already been processed.
+    """
+    if not checkpoint_path.exists():
+        return set()
+
+    completed = set()
+    with open(checkpoint_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                if "conversation_id" in record:
+                    completed.add(record["conversation_id"])
+            except json.JSONDecodeError:
+                logger.warning(f"Skipping malformed checkpoint line: {line[:50]}...")
+    return completed
+
+
+def load_checkpoint_results(checkpoint_path: Path) -> dict[str, dict]:
+    """Load full results from checkpoint file.
+
+    Returns dict mapping conversation_id -> full result dict (including conversation data).
+    Use this to get all results after a resumed batch completes.
+    """
+    if not checkpoint_path.exists():
+        return {}
+
+    results = {}
+    with open(checkpoint_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                if "conversation_id" in record:
+                    results[record["conversation_id"]] = record
+            except json.JSONDecodeError:
+                logger.warning(f"Skipping malformed checkpoint line: {line[:50]}...")
+    return results
+
+
+def append_checkpoint(
+    checkpoint_path: Path,
+    result: AssessmentResult,
+    conversation_data: dict | None = None,
+) -> None:
+    """Append a result to the checkpoint file (atomic append).
+
+    Each line is a complete JSON record that can be recovered independently.
+    """
+    record = result.to_dict()
+    if conversation_data is not None:
+        record["conversation"] = conversation_data
+
+    with open(checkpoint_path, "a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+async def assess_batch(
+    conversations: list[tuple[str, ConversationInput]],
+    checkpoint_path: Path | None = None,
+    api_key: str | None = None,
+    concurrency: int = 10,
+    progress_callback: ProgressCallback | None = None,
+    log_interval: int = 10,
+) -> list[AssessmentResult | None]:
+    """
+    Assess a batch of conversations with checkpointing and progress reporting.
+
+    Args:
+        conversations: List of (conversation_id, ConversationInput) tuples
+        checkpoint_path: Path to checkpoint file for resume capability.
+                        Results are appended as they complete.
+        api_key: Optional OpenAI API key
+        concurrency: Maximum concurrent assessments (default 10)
+        progress_callback: Optional callback for progress updates
+        log_interval: Log progress every N conversations
+
+    Returns:
+        List of AssessmentResults for newly processed conversations.
+        None for conversations that were already in checkpoint.
+        Use load_checkpoint_results() to get all results including resumed ones.
+
+    Checkpointing:
+        - If checkpoint_path exists, loads completed IDs and skips them
+        - Each result is appended to checkpoint as it completes
+        - On crash, resume by calling with same checkpoint_path
+
+    Raises:
+        ValueError: If conversation IDs are not unique
+    """
+    # Validate conversation ID uniqueness
+    seen_ids: set[str] = set()
+    duplicates: list[str] = []
+    for cid, _ in conversations:
+        if cid in seen_ids:
+            duplicates.append(cid)
+        seen_ids.add(cid)
+
+    if duplicates:
+        raise ValueError(
+            f"Duplicate conversation IDs found: {duplicates[:5]}"
+            f"{' (and more)' if len(duplicates) > 5 else ''}. "
+            f"Each conversation must have a unique ID for checkpointing to work correctly."
+        )
+
+    # Load previously completed conversations
+    completed_ids: set[str] = set()
+
+    if checkpoint_path is not None:
+        completed_ids = load_checkpoint(checkpoint_path)
+        if completed_ids:
+            logger.info(
+                f"Resuming from checkpoint: {len(completed_ids)} already completed"
+            )
+
+    # Filter to only process incomplete conversations
+    to_process = [
+        (cid, conv) for cid, conv in conversations if cid not in completed_ids
+    ]
+
+    # Initialize progress tracking
+    # Set both completed and _initial_completed so rate calculations are accurate
+    initial_count = len(completed_ids)
+    progress = BatchProgress(
+        total=len(conversations),
+        completed=initial_count,
+        _initial_completed=initial_count,
+    )
+
+    logger.info(
+        f"Batch assessment: {len(to_process)} to process, "
+        f"{len(completed_ids)} already complete"
+    )
+
+    # Process with controlled concurrency
+    semaphore = asyncio.Semaphore(concurrency)
+    results_by_id: dict[str, AssessmentResult] = {}
+
+    async def process_one(
+        conversation_id: str, conversation: ConversationInput, index: int
+    ) -> tuple[str, AssessmentResult]:
+        async with semaphore:
+            try:
+                result = await assess_conversation(
+                    conversation,
+                    api_key=api_key,
+                    conversation_id=conversation_id,
+                )
+            except ValueError as e:
+                # Handle validation errors (e.g., too few turns) by creating a failed result
+                # This ensures the conversation is checkpointed and won't be retried
+                logger.warning(f"Conversation {conversation_id} failed validation: {e}")
+                result = AssessmentResult(
+                    passed=False,
+                    score=0.0,
+                    threshold=PASS_THRESHOLD,
+                    category_scores={cat: 0.0 for cat in CATEGORY_WEIGHTS},
+                    answers={},
+                    reasonings={"_validation_error": str(e)},
+                    failed_checks=["_validation_error"],
+                    failed_safety=[],
+                    safety_gate_failed=False,
+                    error_count=1,
+                    conversation_id=conversation_id,
+                )
+
+            # Record progress
+            progress.record(result)
+
+            # Log periodically
+            if progress.completed % log_interval == 0:
+                logger.info(progress.summary())
+
+            # Checkpoint immediately
+            if checkpoint_path is not None:
+                append_checkpoint(
+                    checkpoint_path,
+                    result,
+                    {"turns": conversation.to_tuples()},
+                )
+
+            # Progress callback
+            if progress_callback is not None:
+                progress_callback(
+                    conversation_id,
+                    progress.completed,
+                    progress.total,
+                    result,
+                )
+
+            return conversation_id, result
+
+    # Run all tasks
+    tasks = [process_one(cid, conv, i) for i, (cid, conv) in enumerate(to_process)]
+    raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Process results
+    for result in raw_results:
+        if isinstance(result, BaseException):
+            logger.error(f"Task failed: {result}")
+            continue
+        cid, assessment = result
+        results_by_id[cid] = assessment
+
+    # Final summary
+    logger.info(
+        f"Batch complete: {progress.completed}/{progress.total} "
+        f"({progress.pass_rate:.1%} pass rate, "
+        f"{progress.elapsed_seconds:.1f}s total)"
+    )
+
+    # Return results in original order
+    # - None for conversations that were already in checkpoint (skipped)
+    # - AssessmentResult for newly processed conversations
+    # Use load_checkpoint_results() to get full data for all conversations
+    return [results_by_id.get(cid) for cid, _ in conversations]
 
 
 def print_results(result: AssessmentResult) -> None:
     """Pretty-print assessment results to stdout."""
     print("\n=== ASSESSMENT RESULTS ===")
+
+    if result.conversation_id:
+        print(f"Conversation ID: {result.conversation_id}")
 
     if result.safety_gate_failed:
         print("\n" + "=" * 50)
