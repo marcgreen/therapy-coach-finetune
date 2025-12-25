@@ -82,26 +82,29 @@ Build a **privacy-first, locally-runnable therapeutic coaching model** that:
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  SKILL 2: Synthetic Data Generator                                   │
-│  ─────────────────────────────────                                  │
+│  SKILL 2: Base Model Selector + Baseline Evaluation                  │
+│  ──────────────────────────────────────────────                     │
+│  • Research current SOTA for target size (7B)                       │
+│  • Consider: license, quality, context, community, quantization     │
+│  • Select candidate and pull via Ollama                             │
+│  • Generate ~50 evaluation scenarios from taxonomy                  │
+│  • Run base model on scenarios, assess with rubric                  │
+│  • Decision: fine-tune or not? (see criteria below)                 │
+│                                                                      │
+│  Outputs: Selected model, baseline pass rate, fine-tuning decision  │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  SKILL 3: Synthetic Data Generator (Conditional)                     │
+│  ───────────────────────────────────────────                        │
+│  • Only proceed if baseline evaluation indicates need               │
 │  • Generate multi-turn conversations from taxonomy                  │
 │  • Use DSPy/GEPA for automated prompt optimization                  │
 │  • Evaluate with rubric, filter at 0.80 threshold                   │
 │  • Target: 1-2K filtered conversations                              │
 │                                                                      │
 │  Outputs: training_data.jsonl, eval_holdout.jsonl                   │
-└─────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  SKILL 3: Base Model Selector                                        │
-│  ────────────────────────────                                       │
-│  • Research current SOTA for target size                            │
-│  • Consider: license, quality, context, community, quantization     │
-│  • Discuss trade-offs with user                                     │
-│  • Pilot evaluation on sample inputs                                │
-│                                                                      │
-│  Outputs: Selected model + rationale                                │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -128,6 +131,18 @@ Build a **privacy-first, locally-runnable therapeutic coaching model** that:
 │  Outputs: Comparison report, deployment decision                    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+### Fine-tuning Decision Criteria
+
+After baseline evaluation, decide whether to proceed:
+
+| Base Model Pass Rate | Decision |
+|---------------------|----------|
+| ≥ 70% | Likely sufficient — qualitative review before proceeding |
+| 50-70% | Moderate improvement possible — proceed with fine-tuning |
+| < 50% | Significant improvement needed — full pipeline |
+
+**Note:** Even with high pass rates, qualitative review may reveal specific failure modes worth addressing with targeted fine-tuning.
 
 ---
 

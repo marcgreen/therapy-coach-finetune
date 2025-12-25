@@ -6,133 +6,80 @@
 
 **Architecture:** Two-agent conversation simulation (user persona + therapeutic coach) generates multi-turn dialogues. An LLM-as-judge evaluates conversations against 12 criteria with a safety gate. DSPy/GEPA optimizes generation prompts using rubric feedback. Final output is filtered JSONL for HuggingFace SFTTrainer.
 
-**Tech Stack:** Python 3.12, OpenAI API (gpt-4o-mini for judging), DSPy for prompt optimization, Pydantic for validation, asyncio for concurrent processing.
+**Tech Stack:** Python 3.12, OpenAI API (gpt-5-mini for generation, Responses API), Pydantic for validation, asyncio for concurrent processing.
 
 ---
 
-## Pre-Implementation: Critical Issues to Fix
+## Phase 0: E2E Validation
 
-Before starting implementation, these blockers must be resolved:
+**Goal:** Prove the end-to-end pipeline works before full implementation.
 
-| Issue | Location | Fix |
-|-------|----------|-----|
-| Fictional model `gpt-5.2-mini` | assessor.py:531 | Replace with `gpt-4o-mini` |
-| DSPy not in dependencies | pyproject.toml | Add `dspy-ai>=2.5.0` |
-| Pilot threshold inconsistency | SPEC.md vs SKILL.md | Standardize on 40% |
-| Rubric doc missing NA-invalid logic | reference/assessment-rubric.md | Update pseudocode |
+### Task 0.1: Generate Single Conversation
+
+**Step 1: Create minimal generator**
+
+Generate one synthetic conversation to validate generation logic.
+
+**Step 2: Verify conversation structure**
+
+Ensure it has expected format (user/assistant turns, proper length).
+
+**Expected outcome:** One valid conversation proves generation works.
+
+---
+
+### Task 0.2: Assess Single Conversation
+
+**Step 1: Run assessor on generated conversation**
+
+Use existing `assessor.py` to evaluate the conversation.
+
+**Step 2: Verify assessment completes**
+
+Check that all 12 criteria are assessed and scoring works.
+
+**Expected outcome:** One assessment result proves evaluation works.
 
 ---
 
 ## Phase 1: Fix Critical Blockers
 
-### Task 1.1: Fix Fictional Model Name
+### Task 1.1: Fix Model Name to gpt-5-mini
 
 **Files:**
 - Modify: `assessor.py:531`
 
-**Step 1: Read the current line**
-
-Verify line 531 contains `gpt-5.2-mini`.
-
-**Step 2: Replace with real model**
+**Step 1: Replace with correct model**
 
 ```python
-# assessor.py:531 - change from:
-model="gpt-5.2-mini",
-
-# to:
-model="gpt-4o-mini",
+# assessor.py:531 - change to:
+model="gpt-5-mini",
 ```
 
-**Step 3: Verify no other references**
+**Step 2: Verify no other incorrect references**
 
-Run: `grep -n "gpt-5" assessor.py`
-Expected: No output (no remaining references)
-
-**Step 4: Commit**
-
-```bash
-git add assessor.py
-git commit -m "fix: replace fictional gpt-5.2-mini with gpt-4o-mini"
-```
-
----
-
-### Task 1.2: Add DSPy Dependency
-
-**Files:**
-- Modify: `pyproject.toml`
-
-**Step 1: Add dspy-ai to dependencies**
-
-```toml
-# pyproject.toml - add to dependencies list:
-dependencies = [
-    # Pinned for GPT-5.2 responses API compatibility
-    "openai==2.14.0",
-    "pydantic==2.12.5",
-    "tenacity==9.1.2",
-    "dspy-ai>=2.5.0",
-]
-```
-
-**Step 2: Sync dependencies**
-
-Run: `uv sync`
-Expected: dspy-ai and its dependencies installed
-
-**Step 3: Verify import works**
-
-Run: `uv run python -c "import dspy; print(dspy.__version__)"`
-Expected: Version number printed (e.g., `2.5.43`)
-
-**Step 4: Commit**
-
-```bash
-git add pyproject.toml uv.lock
-git commit -m "deps: add dspy-ai for prompt optimization"
-```
-
----
-
-### Task 1.3: Standardize Pilot Threshold
-
-**Files:**
-- Modify: `SPEC.md:175-176`
-- Modify: `.claude/skills/generating-finetuning-data/SKILL.md:282-287`
-
-**Step 1: Update SPEC.md pilot thresholds**
-
-```markdown
-# SPEC.md - update decision criteria to match:
-**Decision criteria:**
-- Pass rate ≥40%: Proceed to scale
-- Pass rate 25-40%: Major prompt revision needed before scaling
-- Pass rate <25%: Fundamental issue — revisit taxonomy or rubric
-```
-
-**Step 2: Update SKILL.md to match**
-
-```markdown
-# SKILL.md - update decision criteria table:
-**Decision criteria:**
-| Pass Rate | Action |
-|-----------|--------|
-| ≥40% | Proceed to scale |
-| 25-40% | Major prompt revision needed |
-| <25% | Fundamental issue — revisit taxonomy or rubric |
-```
+Run: `grep -rn "gpt-4o-mini\|gpt-5\.2-mini" .`
+Expected: No output (no remaining incorrect references)
 
 **Step 3: Commit**
 
 ```bash
-git add SPEC.md .claude/skills/generating-finetuning-data/SKILL.md
-git commit -m "docs: standardize pilot threshold to 40%"
+git add assessor.py
+git commit -m "fix: use gpt-5-mini for assessment"
 ```
 
 ---
 
-### Task 1.4: Update Rubric Doc with NA-Invalid Logic
+### Task 1.2: Standardize Pilot Threshold
+
+**Files:**
+- Modify: `SPEC.md` (already done in main SPEC update)
+
+**Note:** Threshold already standardized to 40% in SPEC.md update.
+
+---
+
+### Task 1.3: Update Documentation
 
 **Files:**
 - Modify: `reference/assessment-rubric.md:134-191`
@@ -1154,6 +1101,10 @@ git commit -m "config: add input taxonomy for conversation generation"
 
 ## Phase 4: Create Conversation Generator
 
+**Note:** Generator should support two modes:
+1. **Scenario-only mode:** Generate just user scenarios (for base model evaluation)
+2. **Full-conversation mode:** Generate complete multi-turn conversations (for training data)
+
 ### Task 4.1: Create generator.py Skeleton
 
 **Files:**
@@ -1300,10 +1251,10 @@ async def generate_persona(
         difficulty=config.difficulty,
     )
 
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+    response = await client.responses.create(
+        model="gpt-5-mini",
         messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
+        reasoning={"effort": "low"},
         temperature=0.9,
     )
 
@@ -1403,9 +1354,10 @@ async def generate_user_turn(
         guidance=guidance,
     )
 
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+    response = await client.responses.create(
+        model="gpt-5-mini",
         messages=[{"role": "user", "content": prompt}],
+        reasoning={"effort": "low"},
         temperature=0.8,
     )
 
@@ -1420,9 +1372,10 @@ async def generate_therapist_turn(
     """Generate the therapist's response."""
     messages = [{"role": "system", "content": system_prompt}] + history
 
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",  # Or stronger model for better quality
+    response = await client.responses.create(
+        model="gpt-5-mini",
         messages=messages,
+        reasoning={"effort": "low"},
         temperature=0.7,
     )
 
@@ -1629,9 +1582,132 @@ git commit -m "chore: ignore output directory"
 
 ---
 
-## Phase 5: Create DSPy Integration
+## Phase 5: Base Model Selection + Evaluation (KEY DECISION POINT)
 
-### Task 5.1: Create DSPy Metric Wrapper
+**Goal:** Determine if base model is sufficient or if fine-tuning is needed.
+
+### Task 5.1: Research and Select Base Model
+
+**Step 1: Research current SOTA 7B models**
+
+Candidates (per SPEC.md):
+- Qwen 2.5 7B Instruct (recommended in SPEC)
+- Llama 3.1 8B Instruct
+- Mistral 7B Instruct v0.3
+
+**Step 2: Select Qwen 2.5 7B Instruct**
+
+Based on SPEC.md recommendation: "Strong chat, good multilingual, Apache 2.0 license"
+
+**Step 3: Pull via Ollama**
+
+```bash
+ollama pull qwen2.5:7b-instruct
+```
+
+**Step 4: Verify model works**
+
+```bash
+ollama run qwen2.5:7b-instruct "Hello, I've been feeling anxious lately."
+```
+
+Expected: Model responds appropriately
+
+---
+
+### Task 5.2: Generate Evaluation Scenarios
+
+**Step 1: Create scenario generator script**
+
+Modify generator.py to support scenario-only mode:
+- Generate just the opening user message (no full conversation)
+- Sample from taxonomy to get diverse scenarios
+
+**Step 2: Generate 50 scenarios**
+
+```bash
+uv run python generator.py --scenarios-only 50
+```
+
+Expected: 50 diverse user opening messages
+
+---
+
+### Task 5.3: Run Base Model on Scenarios
+
+**Step 1: Create evaluation script**
+
+Script to:
+- Load scenarios
+- Run Ollama model on each
+- Generate assistant responses
+- Save as conversations
+
+**Step 2: Run evaluation**
+
+```bash
+uv run python evaluate_base_model.py --model qwen2.5:7b-instruct --scenarios output/scenarios.jsonl
+```
+
+Expected: 50 conversations (1 turn each: user scenario + assistant response)
+
+---
+
+### Task 5.4: Assess Base Model Performance
+
+**Step 1: Run assessor on base model conversations**
+
+```bash
+uv run python pipeline.py assess output/base_model_responses.jsonl
+```
+
+**Step 2: Analyze pass rate and failure modes**
+
+Review:
+- Overall pass rate
+- Which criteria fail most often
+- Safety gate failures
+
+**Step 3: Make decision**
+
+| Pass Rate | Decision |
+|-----------|----------|
+| ≥ 70% | Consider qualitative review - may not need fine-tuning |
+| 50-70% | Proceed with fine-tuning (moderate improvement expected) |
+| < 50% | Full pipeline needed (significant improvement possible) |
+
+**Step 4: Document decision**
+
+Create `docs/base-model-evaluation.md` with:
+- Pass rate
+- Key failure modes
+- Decision rationale
+- If proceeding: proceed to Phase 6
+- If not proceeding: deploy base model or try different model
+
+---
+
+## Phase 6: DSPy Integration (Conditional - only if fine-tuning)
+
+**Prerequisites:** Phase 5 decision to proceed with fine-tuning
+
+### Task 6.1: Add DSPy Dependency
+
+**Step 1: Add dspy-ai to dependencies**
+
+```bash
+uv add dspy-ai
+```
+
+**Step 2: Verify import works**
+
+```bash
+uv run python -c "import dspy; print(dspy.__version__)"`
+```
+
+---
+
+### Task 6.2: Create DSPy Metric Wrapper
 
 **Files:**
 - Create: `dspy_integration.py`
@@ -1902,9 +1978,108 @@ git commit -m "feat: add DSPy integration with rubric metric and conversation ge
 
 ---
 
-## Phase 6: Create Pipeline Script
+## Phase 7: Pilot Run (Conditional - 100 conversations)
 
-### Task 6.1: Create Main Pipeline Script
+**Prerequisites:** Phase 5 decision to proceed with fine-tuning
+
+**Goal:** Validate generation and assessment at small scale before full run.
+
+### Task 7.1: Run Pilot Generation
+
+```bash
+uv run python pipeline.py pilot
+```
+
+**Expected:**
+- 100 conversations generated
+- Assessed with rubric
+- Pass rate calculated
+- Decision: proceed to Phase 8 or revise prompts
+
+---
+
+## Phase 8: Full Generation (Conditional - if pilot passes)
+
+**Prerequisites:** Pilot pass rate ≥ 40%
+
+**Goal:** Generate full training dataset.
+
+### Task 8.1: Run Full Generation
+
+```bash
+uv run python pipeline.py full
+```
+
+**Expected:**
+- 3K conversations generated
+- ~1.2-1.5K pass filtering
+- Split into training/eval sets
+
+---
+
+## Phase 9: Training (HuggingFace QLoRA)
+
+**Prerequisites:** Phase 8 completed with sufficient training data
+
+**Goal:** Fine-tune base model on generated conversations.
+
+### Task 9.1: Submit Training Job
+
+Follow existing training documentation in `reference/training-methods.md`.
+
+```bash
+# Upload data to HuggingFace
+# Submit QLoRA training job
+# Monitor training progress
+```
+
+---
+
+## Phase 10: Final Evaluation
+
+**Goal:** Compare fine-tuned model vs baseline.
+
+### Task 10.1: Run Comparative Evaluation
+
+```bash
+uv run python evaluate_models.py --baseline qwen2.5:7b-instruct --finetuned <model>
+```
+
+**Expected:**
+- Statistical comparison (t-test)
+- Qualitative review
+- Decision: deploy or iterate
+
+---
+
+## Removed: Pipeline Script Creation
+
+**Note:** This phase was removed as pipeline.py already exists in the codebase (per the original plan). No need to recreate it.
+
+---
+
+## Summary: Implementation Phase Structure
+
+### Always Required:
+- **Phase 0:** E2E Validation (1 conversation)
+- **Phase 1:** Fix Critical Blockers (model names, docs)
+- **Phase 2:** Write Tests (TDD for assessor)
+- **Phase 3:** Create Taxonomy Config
+- **Phase 4:** Create Generator (with scenario-only mode)
+- **Phase 5:** Base Model Selection + Evaluation (KEY DECISION POINT)
+
+### Conditional (if base model needs fine-tuning):
+- **Phase 6:** DSPy Integration (add dependency, create wrapper)
+- **Phase 7:** Pilot Run (100 conversations)
+- **Phase 8:** Full Generation (3K conversations)
+- **Phase 9:** Training (HuggingFace QLoRA)
+- **Phase 10:** Final Evaluation (compare models)
+
+---
+
+## Previous Content Below (For Reference)
+
+### Task 9.1: Create Main Pipeline Script
 
 **Files:**
 - Create: `pipeline.py`
@@ -2252,76 +2427,6 @@ git commit -m "feat: add main pipeline script with pilot/full/assess commands"
 
 ---
 
-## Phase 7: Integration Testing
+## End of Plan
 
-### Task 7.1: End-to-End Smoke Test
-
-**Step 1: Generate 3 conversations**
-
-Run: `uv run python generator.py 3`
-Expected: 3 conversations generated to output/
-
-**Step 2: Assess them**
-
-Run: `uv run python pipeline.py assess output/generated_conversations.jsonl`
-Expected: Assessment runs (may pass or fail)
-
-**Step 3: Verify checkpoint created**
-
-Run: `ls output/checkpoints/`
-Expected: assess_*.jsonl file
-
-**Step 4: Commit**
-
-```bash
-git commit -m "test: verify end-to-end pipeline smoke test"
-```
-
----
-
-## Phase 8: Final Validation
-
-### Task 8.1: Run All Tests
-
-**Step 1: Run full test suite**
-
-Run: `uv run pytest tests/ -v`
-Expected: All tests pass
-
-**Step 2: Run linting**
-
-Run: `uv run ruff check .`
-Expected: No errors
-
-**Step 3: Run type checking**
-
-Run: `uv run ty check .`
-Expected: No errors (or acceptable warnings)
-
-**Step 4: Final commit**
-
-```bash
-git add .
-git commit -m "chore: final validation - all tests pass"
-```
-
----
-
-## Summary: What Was Built
-
-| Component | File | Purpose |
-|-----------|------|---------|
-| Assessor (existing) | `assessor.py` | LLM-as-judge for conversation quality |
-| Tests | `tests/test_assessor.py` | Verify scoring logic correctness |
-| Taxonomy | `config/input-taxonomy.yaml` | Input distribution configuration |
-| Generator | `generator.py` | Two-agent conversation simulation |
-| DSPy Integration | `dspy_integration.py` | Prompt optimization support |
-| Pipeline | `pipeline.py` | Orchestration (pilot/full/assess) |
-
-## Next Steps After This Plan
-
-1. **Run pilot**: `uv run python pipeline.py pilot`
-2. **Analyze failures**: Review checkpoint for systematic issues
-3. **Optional DSPy optimization**: If pass rate < 50%, use GEPA to optimize prompts
-4. **Run full generation**: `uv run python pipeline.py full`
-5. **Submit to HuggingFace**: Use output training data for SFT
+**Note:** The original plan included detailed implementation tasks for creating pipeline.py, DSPy integration, and testing. These are preserved above in "Previous Content Below (For Reference)" section but have been reorganized into the new phase structure that prioritizes base model evaluation before committing to full data generation.
