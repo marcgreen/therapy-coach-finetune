@@ -150,7 +150,11 @@ Build a **privacy-first, locally-runnable therapeutic coaching model** that:
 
 - Generate: ~3-4K raw conversations
 - Filter at 0.80 threshold: ~1.5-2K conversations
-- Token count: 15K-60K turns of training signal
+- Turn count: 22K-60K turns of training signal
+  - Lower bound: 1.5K convos × 15 turns = 22.5K turns
+  - Upper bound: 2K convos × 30 turns = 60K turns
+- Token estimate: ~3-8M tokens total
+  - ~200 tokens per message average × 2 messages per turn × 22-60K turns
 
 ### Data Format (SFT)
 
@@ -187,19 +191,24 @@ taxonomy:
       subtopics: [anger, sadness, overwhelm, numbness, mood_swings]
     - name: edge_cases
       weight: 0.15
-      subtopics: [crisis_signals, medical_advice, out_of_scope, vague, hostile]
+      subtopics:
+        - crisis_signals    # Suicidal ideation, self-harm mentions
+        - medical_advice    # Requests for diagnoses, medication info
+        - out_of_scope      # Legal, financial, non-therapeutic
+        - vague             # Minimal context, unclear intent
+        - hostile           # Aggressive, testing boundaries
 
   styles:
-    terse: 0.15
-    conversational: 0.40
-    detailed: 0.25
-    emotional: 0.15
-    analytical: 0.05
+    terse: 0.15            # "feeling anxious"
+    conversational: 0.40   # Natural, flowing
+    detailed: 0.25         # Full context provided
+    emotional: 0.15        # Intense feelings expressed
+    analytical: 0.05       # "I notice a pattern..."
 
   difficulty:
-    easy: 0.30
-    medium: 0.50
-    hard: 0.20
+    easy: 0.30             # Clear emotion, common situation
+    medium: 0.50           # Mixed feelings, some complexity
+    hard: 0.20             # Ambiguous, layered, edge cases
 ```
 
 ---
@@ -236,10 +245,11 @@ weights = {
     "connection": 0.20,  # Highest - therapy is relational
     "usefulness": 0.15,
     "fit": 0.10,
-    "safety": 0.20,      # Weighted, not gate
+    "safety": 0.20,      # GATE: any failure = auto-reject
     "patterns": 0.20,
 }
 pass_threshold = 0.80
+safety_gate = True  # CQ8 or CQ9 failure = automatic rejection
 ```
 
 **Implementation:** See `assessor.py` and `reference/assessment-rubric.md`
@@ -344,14 +354,17 @@ optimized = optimizer.compile(
 ### Code/Data
 - `config/input-taxonomy.yaml` — Therapeutic input distribution
 - `config/generation-prompt.md` — Optimized generation prompt
-- `data/training_data.jsonl` — Filtered training conversations
-- `data/eval_holdout.jsonl` — Held-out evaluation set
+- `config/system-prompt.md` — System prompt for training data
+- `output/training_data.jsonl` — Filtered training conversations
+- `output/eval_holdout.jsonl` — Held-out evaluation set
+- `output/generation_report.json` — Pass rates, iteration history
+- `output/failed_examples.jsonl` — For debugging generation prompts
 - Fine-tuned model on HuggingFace Hub
 - GGUF export for local inference
 
 ### Documentation
 - Updated `reference/therapeutic-frameworks.md` (9 styles)
-- Updated `reference/evaluation-rubric.md` (long conversation support)
+- Updated `reference/assessment-rubric.md` (conversation-level, safety gate)
 - SKILL documentation for all 5 skills
 - `reports/comparison_report.md` — Final evaluation
 
@@ -381,12 +394,20 @@ optimized = optimizer.compile(
 
 | Artifact | Status |
 |----------|--------|
-| Assessment rubric (12 criteria) | ✅ Complete |
-| `assessor.py` | ✅ Complete |
+| Assessment rubric (12 criteria) | ✅ Complete (with safety gate) |
+| `assessor.py` | ✅ Complete (Pydantic validation, safety gate, file input) |
 | `therapeutic-frameworks.md` (9 styles) | ✅ Complete |
-| Data generation skill | ✅ Complete |
+| Data generation skill | ✅ Complete (incl. multi-turn generation spec) |
 | Training methods guide | ✅ Complete |
-| Input taxonomy template | ✅ Needs therapeutic config |
+| Evaluation integration guide | ✅ Complete |
+| Input taxonomy (SPEC + template) | ✅ Complete |
+| System prompt for training | ✅ Complete |
+
+**Not yet implemented:**
+- `config/input-taxonomy.yaml` — Actual config file (template exists)
+- `config/generation-prompt.md` — Optimized after DSPy iteration
+- Conversation generator script — Code from SKILL spec
+- DSPy dependency + optimization pipeline
 
 ---
 

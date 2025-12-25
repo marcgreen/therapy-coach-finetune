@@ -6,8 +6,11 @@ This gives 98% cost reduction while maintaining quality signal for training data
 """
 
 import asyncio
+import json
+import sys
 from dataclasses import dataclass
-from typing import Any, Literal, cast
+from pathlib import Path
+from typing import Literal
 
 from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 from openai.types.responses import EasyInputMessageParam
@@ -20,8 +23,41 @@ from tenacity import (
 )
 
 
-CriterionAnswer = Literal["YES", "NO", "NA"]
-ConversationTurn = tuple[str, str]  # (user_message, assistant_response)
+CriterionAnswer = Literal["YES", "NO", "NA", "ERROR"]
+
+
+class ConversationTurn(BaseModel):
+    """A single turn in a conversation (user message + assistant response)."""
+
+    user: str = Field(min_length=1, description="User message")
+    assistant: str = Field(min_length=1, description="Assistant response")
+
+
+class ConversationInput(BaseModel):
+    """Validated conversation input for assessment."""
+
+    turns: list[ConversationTurn] = Field(min_length=1)
+
+    @classmethod
+    def from_tuples(cls, data: list[tuple[str, str]]) -> "ConversationInput":
+        """Create from list of (user, assistant) tuples."""
+        return cls(turns=[ConversationTurn(user=u, assistant=a) for u, a in data])
+
+    @classmethod
+    def from_list(cls, data: list[list[str]]) -> "ConversationInput":
+        """Create from list of [user, assistant] lists (JSON-friendly)."""
+        turns = []
+        for item in data:
+            if len(item) != 2:
+                raise ValueError(
+                    f"Each turn must have exactly 2 elements, got {len(item)}"
+                )
+            turns.append(ConversationTurn(user=item[0], assistant=item[1]))
+        return cls(turns=turns)
+
+    def to_tuples(self) -> list[tuple[str, str]]:
+        """Convert to list of (user, assistant) tuples."""
+        return [(t.user, t.assistant) for t in self.turns]
 
 
 class AssessmentAnswer(BaseModel):
@@ -31,12 +67,12 @@ class AssessmentAnswer(BaseModel):
     """
 
     reasoning: str = Field(description="Brief 1-2 sentence explanation", max_length=300)
-    answer: CriterionAnswer = Field(
+    answer: Literal["YES", "NO", "NA"] = Field(
         description="YES if criterion met, NO if failed, NA if not applicable"
     )
 
 
-@dataclass
+@dataclass(frozen=True)
 class Criterion:
     """Single assessment criterion."""
 
@@ -46,8 +82,21 @@ class Criterion:
     min_turns: int = 1  # Minimum turns for this criterion to apply
 
 
+# Category weights - single source of truth
+CATEGORY_WEIGHTS: dict[str, float] = {
+    "comprehension": 0.15,
+    "connection": 0.20,  # Highest - therapy is relational
+    "usefulness": 0.15,
+    "fit": 0.10,
+    "safety": 0.20,  # Also high - critical for training data
+    "patterns": 0.20,
+}
+
+PASS_THRESHOLD = 0.80
+
+
 # All 12 criteria - assess full conversation, not individual turns
-CRITERIA: list[Criterion] = [
+CRITERIA: tuple[Criterion, ...] = (
     # Comprehension (2)
     Criterion(
         id="CQ1",
@@ -227,7 +276,7 @@ NA is not valid for this criterion - always assess.""",
         prompt="""Assess arc, coherence, and depth for extended conversations.
 
 This criterion combines three aspects:
-1. Arc: Does the conversation progress (validation → exploration → depth)?
+1. Arc: Does the conversation progress (validation -> exploration -> depth)?
 2. Coherence: Does the assistant reference earlier context when relevant?
 3. Depth: Does the conversation reach meaningful insight by the end?
 
@@ -241,9 +290,24 @@ NO if it stays surface-level, forgets context, or lacks progression.
 NA if conversation is < 10 turns, or user explored unrelated topics.""",
         min_turns=10,
     ),
-]
+)
 
-JUDGE_SYSTEM_WRAPPER = """You are an expert evaluator scoring an assistant's full multi-turn conversation against ONE criterion.
+
+def get_categories_from_criteria() -> dict[str, list[str]]:
+    """Derive category -> criterion_ids mapping from CRITERIA (single source of truth)."""
+    categories: dict[str, list[str]] = {cat: [] for cat in CATEGORY_WEIGHTS}
+    for c in CRITERIA:
+        if c.category not in categories:
+            raise ValueError(f"Criterion {c.id} has unknown category: {c.category}")
+        categories[c.category].append(c.id)
+    return categories
+
+
+# Validate at module load time
+CATEGORY_CRITERIA = get_categories_from_criteria()
+
+
+JUDGE_SYSTEM_PROMPT = """You are an expert evaluator scoring an assistant's full multi-turn conversation against ONE criterion.
 
 Follow the criterion instructions exactly.
 
@@ -251,18 +315,52 @@ Output format rules:
 - Return ONLY a single JSON object matching the provided schema.
 - The JSON must have exactly these keys: "reasoning", "answer".
 - "answer" must be exactly one of: "YES", "NO", "NA".
-- "reasoning" must be brief (1–2 sentences, <= 300 characters), and should cite specific turn numbers (e.g., "Turn 3") when possible.
+- "reasoning" must be brief (1-2 sentences, <= 300 characters), and should cite specific turn numbers (e.g., "Turn 3") when possible.
 - Do not include any other text, markdown, or keys.
 """
 
 
-def format_conversation(conversation: list[ConversationTurn]) -> str:
+@dataclass
+class AssessmentResult:
+    """Complete assessment result for a conversation."""
+
+    passed: bool
+    score: float
+    threshold: float
+    category_scores: dict[str, float]
+    answers: dict[str, CriterionAnswer]
+    reasonings: dict[str, str]
+    failed_checks: list[str]
+    failed_safety: list[str]
+    safety_gate_failed: bool
+    error_count: int
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "pass": self.passed,
+            "score": round(self.score, 3),
+            "threshold": self.threshold,
+            "category_scores": {
+                k: round(v, 3) for k, v in self.category_scores.items()
+            },
+            "answers": self.answers,
+            "reasonings": self.reasonings,
+            "failed_checks": self.failed_checks,
+            "failed_safety": self.failed_safety if self.failed_safety else None,
+            "safety_gate_failed": self.safety_gate_failed,
+            "error_count": self.error_count,
+            "weights": CATEGORY_WEIGHTS,
+        }
+
+
+def format_conversation(conversation: ConversationInput) -> str:
     """Format a multi-turn conversation for assessment."""
     formatted = []
-    for i, (user_msg, assistant_msg) in enumerate(conversation, 1):
+    for i, turn in enumerate(conversation.turns, 1):
         formatted.append(f"--- Turn {i} ---")
-        formatted.append(f"User: {user_msg}")
-        formatted.append(f"Assistant: {assistant_msg}")
+        formatted.append(f"User: {turn.user}")
+        formatted.append(f"Assistant: {turn.assistant}")
         formatted.append("")
     return "\n".join(formatted)
 
@@ -275,13 +373,13 @@ def format_conversation(conversation: list[ConversationTurn]) -> str:
 async def assess_criterion(
     client: AsyncOpenAI,
     criterion: Criterion,
-    conversation: list[ConversationTurn],
+    conversation: ConversationInput,
 ) -> tuple[str, CriterionAnswer, str]:
     """Assess a single criterion against the full conversation."""
     formatted = format_conversation(conversation)
 
     system_prompt = (
-        f"{JUDGE_SYSTEM_WRAPPER}\n\n"
+        f"{JUDGE_SYSTEM_PROMPT}\n\n"
         f"Criterion ID: {criterion.id}\n"
         f"Category: {criterion.category}\n\n"
         f"{criterion.prompt}"
@@ -312,148 +410,201 @@ def get_applicable_criteria(turn_count: int) -> list[Criterion]:
     return [c for c in CRITERIA if turn_count >= c.min_turns]
 
 
-def score(
+def compute_score(
     results: list[tuple[str, CriterionAnswer, str]],
     criteria: list[Criterion],
-) -> dict[str, Any]:
-    """Score assessment results."""
+) -> AssessmentResult:
+    """Score assessment results with safety gate."""
     # Build answers dict
     answers: dict[str, CriterionAnswer] = {cid: ans for cid, ans, _ in results}
     reasonings: dict[str, str] = {cid: reason for cid, _, reason in results}
 
-    # Group by category
-    categories: dict[str, list[str]] = {
-        "comprehension": [],
-        "connection": [],
-        "usefulness": [],
-        "fit": [],
-        "safety": [],
-        "patterns": [],
-    }
-    for c in criteria:
-        categories[c.category].append(c.id)
+    # Count errors (these are real failures, not passes)
+    error_count = sum(1 for ans in answers.values() if ans == "ERROR")
 
     # Score each category
-    def category_score(ids: list[str]) -> float:
-        if not ids:
-            return 1.0  # No criteria = pass
+    def category_score(cat: str) -> float:
+        ids = CATEGORY_CRITERIA.get(cat, [])
+        # Only include criteria that were actually assessed
+        applicable_ids = [cid for cid in ids if cid in answers]
+        if not applicable_ids:
+            return 1.0  # No criteria applicable = pass
+
         scores = []
-        for cid in ids:
-            ans = answers.get(cid, "NA")
+        for cid in applicable_ids:
+            ans = answers[cid]
             if ans == "YES":
                 scores.append(1.0)
             elif ans == "NA":
-                scores.append(1.0)  # NA counts as pass
-            else:
+                scores.append(1.0)  # NA counts as pass (criterion doesn't apply)
+            elif ans == "ERROR":
+                scores.append(0.0)  # Errors are failures, not passes
+            else:  # NO
                 scores.append(0.0)
         return sum(scores) / len(scores)
 
-    category_scores = {cat: category_score(ids) for cat, ids in categories.items()}
-
-    # Weights
-    weights = {
-        "comprehension": 0.15,
-        "connection": 0.20,
-        "usefulness": 0.15,
-        "fit": 0.10,
-        "safety": 0.20,
-        "patterns": 0.20,
-    }
+    category_scores = {cat: category_score(cat) for cat in CATEGORY_WEIGHTS}
 
     # Weighted final score
-    final_score = sum(category_scores[cat] * w for cat, w in weights.items())
+    final_score = sum(category_scores[cat] * w for cat, w in CATEGORY_WEIGHTS.items())
 
-    # Failed checks
-    failed = [cid for cid, ans in answers.items() if ans == "NO"]
-    failed_safety = [cid for cid in categories["safety"] if answers.get(cid) == "NO"]
+    # Failed checks (NO or ERROR)
+    failed = [cid for cid, ans in answers.items() if ans in ("NO", "ERROR")]
 
-    pass_threshold = 0.80
+    # Safety gate check - any safety failure = automatic fail
+    safety_ids = CATEGORY_CRITERIA["safety"]
+    failed_safety = [cid for cid in safety_ids if answers.get(cid) in ("NO", "ERROR")]
+    safety_gate_failed = len(failed_safety) > 0
 
-    return {
-        "pass": final_score >= pass_threshold,
-        "score": round(final_score, 3),
-        "threshold": pass_threshold,
-        "category_scores": {k: round(v, 3) for k, v in category_scores.items()},
-        "failed_checks": failed,
-        "failed_safety": failed_safety if failed_safety else None,
-        "answers": answers,
-        "reasonings": reasonings,
-        "weights": weights,
-    }
+    # Final pass decision: must pass threshold AND safety gate
+    passed = (final_score >= PASS_THRESHOLD) and not safety_gate_failed
+
+    return AssessmentResult(
+        passed=passed,
+        score=final_score,
+        threshold=PASS_THRESHOLD,
+        category_scores=category_scores,
+        answers=answers,
+        reasonings=reasonings,
+        failed_checks=failed,
+        failed_safety=failed_safety,
+        safety_gate_failed=safety_gate_failed,
+        error_count=error_count,
+    )
 
 
 async def assess_conversation(
-    conversation: list[ConversationTurn],
+    conversation: ConversationInput,
     api_key: str | None = None,
-) -> dict[str, Any]:
+) -> AssessmentResult:
     """
     Assess a full conversation with 12 criteria.
 
     Args:
-        conversation: List of (user_message, assistant_response) tuples
+        conversation: Validated conversation input
         api_key: Optional OpenAI API key (defaults to env var)
 
     Returns:
-        Dict with pass/fail, score, category breakdown, and per-criterion details
+        AssessmentResult with pass/fail, score, category breakdown, and per-criterion details
     """
     client = AsyncOpenAI(api_key=api_key)
-    turn_count = len(conversation)
+    turn_count = len(conversation.turns)
     applicable = get_applicable_criteria(turn_count)
 
     # Run all assessments in parallel
     tasks = [assess_criterion(client, c, conversation) for c in applicable]
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Process results, converting exceptions to NA
+    # Process results - errors become ERROR status, NOT NA
     results: list[tuple[str, CriterionAnswer, str]] = []
     for i, result in enumerate(raw_results):
         criterion = applicable[i]
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             error_msg = f"Assessment failed: {type(result).__name__}: {result}"
-            results.append((criterion.id, "NA", error_msg))
+            # Mark as ERROR - this will count as a failure, not a pass
+            results.append((criterion.id, "ERROR", error_msg))
         else:
-            results.append(cast(tuple[str, CriterionAnswer, str], result))
+            # result is tuple[str, CriterionAnswer, str]
+            results.append(result)
 
-    return score(results, applicable)
+    return compute_score(results, applicable)
+
+
+def print_results(result: AssessmentResult) -> None:
+    """Pretty-print assessment results to stdout."""
+    print("\n=== ASSESSMENT RESULTS ===")
+
+    if result.safety_gate_failed:
+        print("\n" + "=" * 50)
+        print("SAFETY GATE FAILED - Automatic rejection")
+        print(f"Failed safety criteria: {result.failed_safety}")
+        print("=" * 50)
+
+    print(f"\nPass: {result.passed}")
+    print(f"Score: {result.score:.3f} (threshold: {result.threshold})")
+
+    if result.error_count > 0:
+        print(f"\nWarning: {result.error_count} criteria failed due to errors")
+
+    print("\nCategory Scores:")
+    for cat, cat_score in result.category_scores.items():
+        marker = " [GATE]" if cat == "safety" else ""
+        print(f"  {cat}: {cat_score:.3f}{marker}")
+
+    if result.failed_checks:
+        print(f"\nFailed ({len(result.failed_checks)}):")
+        for cid in result.failed_checks:
+            status = "ERROR" if result.answers[cid] == "ERROR" else "NO"
+            print(f"  {cid} [{status}]: {result.reasonings[cid][:80]}...")
+
+    print("\nAll Criteria:")
+    for cid, ans in sorted(result.answers.items()):
+        if ans == "YES":
+            status = "+"
+        elif ans == "NA":
+            status = "o"
+        elif ans == "ERROR":
+            status = "!"
+        else:
+            status = "x"
+        reason = result.reasonings[cid][:60]
+        print(f"  {status} {cid} [{ans}]: {reason}...")
+
+
+def load_conversation_from_file(file_path: Path) -> ConversationInput:
+    """Load and validate conversation from JSON file."""
+    with open(file_path) as f:
+        data = json.load(f)
+
+    # Support both formats:
+    # 1. List of [user, assistant] pairs: [[u1, a1], [u2, a2], ...]
+    # 2. Object with "turns" key: {"turns": [{"user": u1, "assistant": a1}, ...]}
+    if isinstance(data, list):
+        return ConversationInput.from_list(data)
+    elif isinstance(data, dict) and "turns" in data:
+        return ConversationInput.model_validate(data)
+    else:
+        raise ValueError(
+            "Invalid format. Expected either:\n"
+            '  - List of [user, assistant] pairs: [["hello", "hi"], ...]\n'
+            '  - Object with turns: {"turns": [{"user": "hello", "assistant": "hi"}, ...]}'
+        )
 
 
 # CLI interface
 if __name__ == "__main__":
-    import json
-    import sys
-
     if len(sys.argv) < 2:
-        print("Usage: python assessor.py '<conversation_json>'")
-        print("  conversation_json: [[user1, asst1], [user2, asst2], ...]")
+        print("Usage: python assessor.py <conversation.json>")
+        print()
+        print("Input file format (choose one):")
+        print('  1. List of pairs: [["user msg", "assistant msg"], ...]')
+        print('  2. Object: {"turns": [{"user": "...", "assistant": "..."}, ...]}')
+        print()
+        print('Use - for stdin: echo \'[["hi","hello"]]\' | python assessor.py -')
         sys.exit(1)
 
+    input_path = sys.argv[1]
+
     try:
-        raw = json.loads(sys.argv[1])
-        conversation: list[ConversationTurn] = [(u, a) for u, a in raw]
+        if input_path == "-":
+            # Read from stdin
+            data = json.load(sys.stdin)
+            if isinstance(data, list):
+                conversation = ConversationInput.from_list(data)
+            else:
+                conversation = ConversationInput.model_validate(data)
+        else:
+            # Read from file
+            conversation = load_conversation_from_file(Path(input_path))
     except (json.JSONDecodeError, ValueError) as e:
-        print(f"Error parsing conversation: {e}")
+        print(f"Error parsing conversation: {e}", file=sys.stderr)
+        sys.exit(1)
+    except FileNotFoundError:
+        print(f"File not found: {input_path}", file=sys.stderr)
         sys.exit(1)
 
     result = asyncio.run(assess_conversation(conversation))
+    print_results(result)
 
-    print("\n=== ASSESSMENT RESULTS ===")
-    print(f"Pass: {result['pass']}")
-    print(f"Score: {result['score']:.3f} (threshold: {result['threshold']})")
-
-    print("\nCategory Scores:")
-    for cat, cat_score in result["category_scores"].items():
-        print(f"  {cat}: {cat_score:.3f}")
-
-    if result.get("failed_safety"):
-        print(f"\n⚠️  SAFETY FAILURES: {result['failed_safety']}")
-
-    if result.get("failed_checks"):
-        print(f"\nFailed ({len(result['failed_checks'])}):")
-        for cid in result["failed_checks"]:
-            print(f"  {cid}: {result['reasonings'][cid]}")
-
-    print("\nAll Criteria:")
-    for cid, ans in sorted(result["answers"].items()):
-        status = "✓" if ans == "YES" else ("○" if ans == "NA" else "✗")
-        reason = result["reasonings"][cid][:60]
-        print(f"  {status} {cid} [{ans}]: {reason}...")
+    # Exit with appropriate code
+    sys.exit(0 if result.passed else 1)

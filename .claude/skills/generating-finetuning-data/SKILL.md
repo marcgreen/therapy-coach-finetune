@@ -77,6 +77,197 @@ Systematically vary across your taxonomy:
 
 **For GRPO**: Skip this phase — responses generated during training by the policy model.
 
+---
+
+## Multi-Turn Conversation Generation
+
+For therapeutic coaching and similar domains, you need **coherent multi-turn conversations**, not single exchanges. This is significantly harder than single-turn generation.
+
+### The Challenge
+
+Multi-turn generation requires:
+1. A coherent "user persona" that maintains consistent context
+2. Natural conversation flow (not just Q&A ping-pong)
+3. Topic evolution (opening → exploration → depth → resolution)
+4. Realistic user behaviors (resistance, tangents, breakthroughs)
+
+### Approach: Two-Agent Simulation
+
+Use two LLM instances to simulate the conversation:
+
+```python
+import dspy
+
+class UserSimulator(dspy.Signature):
+    """Simulate a therapy client continuing a conversation."""
+    persona: str = dspy.InputField(desc="User's background, situation, communication style")
+    conversation_so_far: str = dspy.InputField()
+    turn_guidance: str = dspy.InputField(desc="What should happen this turn")
+    user_message: str = dspy.OutputField()
+
+class TherapistResponder(dspy.Signature):
+    """Generate therapeutic coach response."""
+    system_prompt: str = dspy.InputField()
+    conversation_so_far: str = dspy.InputField()
+    assistant_response: str = dspy.OutputField()
+```
+
+### Persona Generation
+
+Create diverse user personas from your taxonomy:
+
+```python
+class GeneratePersona(dspy.Signature):
+    """Create a realistic therapy client persona."""
+    topic: str = dspy.InputField()
+    subtopic: str = dspy.InputField()
+    style: str = dspy.InputField()
+    difficulty: str = dspy.InputField()
+
+    persona: str = dspy.OutputField(desc="2-3 sentences: situation, emotional state, communication style")
+    opening_message: str = dspy.OutputField(desc="How they'd start the conversation")
+```
+
+**Example persona:**
+> "35-year-old marketing manager, recently passed over for promotion. Feeling a mix of anger and self-doubt. Tends to intellectualize emotions, uses analytical language. Currently questioning whether to stay at the company or job search."
+
+### Turn-by-Turn Guidance
+
+Don't let the conversation meander. Guide each turn's purpose:
+
+```python
+import random
+
+TURN_TEMPLATES = {
+    "early": [
+        "Share more context about the situation",
+        "Express a specific emotion more directly",
+        "Ask the assistant a direct question",
+        "Show slight resistance to a suggestion",
+    ],
+    "middle": [
+        "Go deeper into underlying feelings",
+        "Make a connection to past experience",
+        "Express ambivalence about change",
+        "Have a small insight or realization",
+    ],
+    "late": [
+        "Reflect on what's been discussed",
+        "Express what feels different now",
+        "Identify a small concrete next step",
+        "Thank the assistant naturally",
+    ],
+}
+
+def get_turn_guidance(turn_number: int, total_turns: int) -> str:
+    if turn_number <= total_turns * 0.3:
+        phase = "early"
+    elif turn_number <= total_turns * 0.7:
+        phase = "middle"
+    else:
+        phase = "late"
+    return random.choice(TURN_TEMPLATES[phase])
+```
+
+### Full Generation Loop
+
+```python
+async def generate_conversation(
+    persona: str,
+    opening: str,
+    target_turns: int,
+    system_prompt: str,
+) -> list[tuple[str, str]]:
+    """Generate a complete multi-turn conversation."""
+    conversation: list[tuple[str, str]] = []
+    history = ""
+
+    # First turn
+    user_msg = opening
+    assistant_msg = await generate_therapist_response(system_prompt, history, user_msg)
+    conversation.append((user_msg, assistant_msg))
+    history = format_history(conversation)
+
+    # Subsequent turns
+    for turn in range(2, target_turns + 1):
+        guidance = get_turn_guidance(turn, target_turns)
+
+        user_msg = await generate_user_message(persona, history, guidance)
+        assistant_msg = await generate_therapist_response(system_prompt, history, user_msg)
+
+        conversation.append((user_msg, assistant_msg))
+        history = format_history(conversation)
+
+    return conversation
+```
+
+### Quality Controls
+
+**Coherence checks:**
+- User persona stays consistent (no sudden personality shifts)
+- Topics connect naturally (no random jumps unless guided)
+- Assistant references earlier context appropriately
+
+**Diversity controls:**
+- Vary conversation lengths (15-30 turns as specified)
+- Mix topic progressions (linear, tangential, returning)
+- Include different resolution types (insight, action, continued exploration)
+
+### DSPy Integration
+
+For automated optimization of conversation generation:
+
+```python
+class ConversationGenerator(dspy.Module):
+    def __init__(self):
+        self.persona_gen = dspy.ChainOfThought(GeneratePersona)
+        self.user_sim = dspy.ChainOfThought(UserSimulator)
+        self.therapist = dspy.ChainOfThought(TherapistResponder)
+
+    def forward(self, topic, subtopic, style, difficulty, target_turns):
+        # Generate persona
+        persona_result = self.persona_gen(
+            topic=topic, subtopic=subtopic, style=style, difficulty=difficulty
+        )
+
+        # Generate conversation
+        conversation = []
+        history = ""
+
+        # ... generation loop using self.user_sim and self.therapist
+
+        return dspy.Prediction(conversation=conversation)
+
+def conversation_metric(example, pred, trace=None):
+    """Evaluate full conversation with rubric."""
+    from assessor import assess_conversation, ConversationInput
+
+    conv_input = ConversationInput.from_tuples(pred.conversation)
+    result = asyncio.run(assess_conversation(conv_input))
+
+    feedback = "\n".join(
+        f"{cid}: {result.reasonings[cid]}"
+        for cid in result.failed_checks
+    )
+
+    return {
+        "score": result.score if not result.safety_gate_failed else 0.0,
+        "feedback": feedback or "All criteria passed",
+    }
+```
+
+### Common Pitfalls
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| Repetitive user messages | No turn guidance | Add explicit turn templates |
+| User suddenly "cured" | No resistance modeling | Include ambivalence in personas |
+| Shallow conversations | Rushing to resolution | Extend middle phase, add depth prompts |
+| Incoherent context | No history in prompts | Always include full conversation history |
+| Same structure every time | Deterministic generation | Vary temperatures, randomize guidance |
+
+---
+
 ## Phase 3: Evaluate
 
 Run every generated example through your evaluation rubric.

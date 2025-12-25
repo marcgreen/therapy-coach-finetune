@@ -36,34 +36,39 @@ taxonomy:
   topics:
     - name: anxiety
       weight: 0.20
-      subtopics: [work_stress, social, health, general]
+      subtopics: [work_stress, social, health, general_worry, panic]
     - name: relationships
       weight: 0.20
-      subtopics: [romantic, family, friendship, coworker]
+      subtopics: [romantic, family, friendship, coworker, loneliness]
     - name: life_transitions
       weight: 0.15
-      subtopics: [career, moving, loss, new_role]
-    - name: self_improvement
+      subtopics: [career_change, relocation, loss_grief, new_role, decision]
+    - name: self_worth
       weight: 0.15
-      subtopics: [habits, motivation, confidence, boundaries]
+      subtopics: [confidence, imposter, self_criticism, perfectionism, identity]
     - name: emotional_regulation
       weight: 0.15
-      subtopics: [anger, sadness, overwhelm, numbness]
+      subtopics: [anger, sadness, overwhelm, numbness, mood_swings]
     - name: edge_cases
       weight: 0.15
-      subtopics: [crisis_signals, out_of_scope, vague]
+      subtopics:
+        - crisis_signals    # Suicidal ideation, self-harm mentions
+        - medical_advice    # Requests for diagnoses, medication info
+        - out_of_scope      # Legal, financial, non-therapeutic
+        - vague             # Minimal context, unclear intent
+        - hostile           # Aggressive, testing boundaries
 
   styles:
-    - terse: 0.15            # "feeling anxious"
-    - conversational: 0.40   # Natural, flowing
-    - detailed: 0.25         # Full context
-    - emotional: 0.15        # Intense feelings
-    - analytical: 0.05       # "I notice a pattern..."
+    terse: 0.15            # "feeling anxious"
+    conversational: 0.40   # Natural, flowing
+    detailed: 0.25         # Full context provided
+    emotional: 0.15        # Intense feelings expressed
+    analytical: 0.05       # "I notice a pattern..."
 
   difficulty:
-    easy: 0.30               # Clear emotion, common situation
-    medium: 0.50             # Mixed feelings, some complexity
-    hard: 0.20               # Ambiguous, layered, edge cases
+    easy: 0.30             # Clear emotion, common situation
+    medium: 0.50           # Mixed feelings, some complexity
+    hard: 0.20             # Ambiguous, layered, edge cases
 ```
 
 ## Example: Customer Support

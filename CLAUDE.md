@@ -10,7 +10,7 @@ Fine-tuning a **privacy-first, locally-runnable therapeutic coaching model** (7B
 
 **Approach:**
 - Generate synthetic multi-turn conversations using DSPy/GEPA optimization
-- Evaluate with rubric (turn-level and conversation-level)
+- Evaluate with conversation-level rubric (12 criteria, safety gate)
 - SFT fine-tuning on filtered high-quality data
 - Export to GGUF for local inference
 
@@ -86,7 +86,7 @@ def process(items, config=None):
 
 ### Code Style
 
-- Follow existing patterns in `eval/parallel_evaluator.py`
+- Follow existing patterns in `assessor.py`
 - Docstrings for public functions and classes
 
 ### Async
