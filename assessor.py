@@ -531,7 +531,7 @@ async def assess_criterion(
         text_format=AssessmentAnswer,
         reasoning={"effort": "medium"},
         text={"verbosity": "low"},
-        max_output_tokens=800,
+        max_output_tokens=1500,  # Needs headroom for reasoning + JSON on long convos
     )
 
     result = response.output_parsed
