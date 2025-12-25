@@ -45,6 +45,22 @@ uv run ruff format .           # Format
 uv run ty check .              # Type check
 ```
 
+## Dependencies
+
+**Always pin exact versions with `==`, never use `>=`.**
+
+```toml
+# Good
+"openai==2.14.0"
+"pytest==9.0.2"
+
+# Bad
+"openai>=2.14.0"
+"pytest>=8.0.0"
+```
+
+**Why:** Reproducible builds. Everyone gets the same versions. No surprise breakage from upstream updates.
+
 ## Code Quality: Write It Right the First Time
 
 **Pre-commit hooks run ruff and ty on every commit.** Write code that passes these checks without needing fixes.
