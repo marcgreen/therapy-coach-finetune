@@ -482,14 +482,8 @@ class AssessmentResult:
 
 
 def format_conversation(conversation: ConversationInput) -> str:
-    """Format a multi-turn conversation for assessment, including system prompt."""
+    """Format a multi-turn conversation for assessment (turns only, no system prompt)."""
     formatted = []
-
-    # Include system prompt if present - helps judge evaluate appropriateness
-    if conversation.system_prompt:
-        formatted.append("--- System Prompt ---")
-        formatted.append(conversation.system_prompt)
-        formatted.append("")
 
     for i, turn in enumerate(conversation.turns, 1):
         formatted.append(f"--- Turn {i} ---")
