@@ -5,7 +5,7 @@ description = "Privacy-first therapeutic coaching model fine-tuning"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    # Pinned for GPT-5.2 responses API compatibility
+    # Pinned for GPT-5 responses API compatibility
     "openai==2.14.0",
     "pydantic==2.12.5",
     "tenacity==9.1.2",
@@ -16,4 +16,6 @@ dev = [
     "pre-commit==4.5.1",
     "ruff==0.14.10",
     "ty==0.0.6",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
 ]

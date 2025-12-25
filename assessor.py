@@ -528,7 +528,7 @@ async def assess_criterion(
     logger.debug(f"Assessing criterion {criterion.id}")
 
     response = await client.responses.parse(
-        model="gpt-5.2-mini",
+        model="gpt-5-mini",
         input=[system_msg, user_msg],
         text_format=AssessmentAnswer,
         reasoning={"effort": "medium"},
