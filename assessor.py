@@ -67,127 +67,6 @@ def get_client(api_key: str | None = None) -> AsyncOpenAI:
 
 
 # =============================================================================
-# Rate Limiter (gpt-5.2-mini: 500k TPM, 500 RPM, 5M TPD)
-# =============================================================================
-
-
-@dataclass
-class RateLimiter:
-    """Token and request rate limiter with sliding window.
-
-    Limits for gpt-5.2-mini:
-        - 500,000 tokens per minute (TPM)
-        - 500 requests per minute (RPM)
-        - 5,000,000 tokens per day (TPD)
-    """
-
-    tpm_limit: int = 500_000
-    rpm_limit: int = 500
-    tpd_limit: int = 5_000_000
-
-    # Sliding window state (initialized in __post_init__)
-    _minute_tokens: list[tuple[float, int]] = field(default_factory=list)
-    _minute_requests: list[float] = field(default_factory=list)
-    _day_tokens: list[tuple[float, int]] = field(default_factory=list)
-    _lock: asyncio.Lock | None = field(default=None)
-
-    def __post_init__(self) -> None:
-        # Create lock lazily to avoid issues with dataclass defaults
-        if self._lock is None:
-            object.__setattr__(self, "_lock", asyncio.Lock())
-
-    def _clean_request_window(self, window: list[float], cutoff: float) -> list[float]:
-        """Remove request timestamps older than cutoff."""
-        return [ts for ts in window if ts > cutoff]
-
-    def _clean_token_window(
-        self, window: list[tuple[float, int]], cutoff: float
-    ) -> list[tuple[float, int]]:
-        """Remove token entries older than cutoff."""
-        return [(ts, tokens) for ts, tokens in window if ts > cutoff]
-
-    def _sum_tokens(self, window: list[tuple[float, int]]) -> int:
-        """Sum tokens in window."""
-        return sum(tokens for _, tokens in window)
-
-    async def acquire(self, estimated_tokens: int = 1000) -> None:
-        """Wait until rate limits allow the request.
-
-        Args:
-            estimated_tokens: Estimated tokens for this request (input + output)
-        """
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-
-        async with self._lock:
-            while True:
-                now = time.time()
-                minute_ago = now - 60
-                day_ago = now - 86400
-
-                # Clean old entries
-                self._minute_tokens = self._clean_token_window(
-                    self._minute_tokens, minute_ago
-                )
-                self._minute_requests = self._clean_request_window(
-                    self._minute_requests, minute_ago
-                )
-                self._day_tokens = self._clean_token_window(self._day_tokens, day_ago)
-
-                current_tpm = self._sum_tokens(self._minute_tokens)
-                current_rpm = len(self._minute_requests)
-                current_tpd = self._sum_tokens(self._day_tokens)
-
-                # Check if we can proceed
-                can_proceed = (
-                    current_tpm + estimated_tokens <= self.tpm_limit
-                    and current_rpm + 1 <= self.rpm_limit
-                    and current_tpd + estimated_tokens <= self.tpd_limit
-                )
-
-                if can_proceed:
-                    # Record this request
-                    self._minute_tokens.append((now, estimated_tokens))
-                    self._minute_requests.append(now)
-                    self._day_tokens.append((now, estimated_tokens))
-                    return
-
-                # Calculate wait time based on which limit is hit
-                if current_rpm + 1 > self.rpm_limit and self._minute_requests:
-                    wait_time = self._minute_requests[0] - minute_ago + 0.1
-                elif (
-                    current_tpm + estimated_tokens > self.tpm_limit
-                    and self._minute_tokens
-                ):
-                    wait_time = self._minute_tokens[0][0] - minute_ago + 0.1
-                elif self._day_tokens:
-                    # TPD limit hit - wait for oldest daily entry to expire
-                    wait_time = min(60.0, self._day_tokens[0][0] - day_ago + 0.1)
-                else:
-                    wait_time = 1.0
-
-                logger.debug(
-                    f"Rate limit: TPM={current_tpm}/{self.tpm_limit}, "
-                    f"RPM={current_rpm}/{self.rpm_limit}, "
-                    f"TPD={current_tpd}/{self.tpd_limit}. "
-                    f"Waiting {wait_time:.1f}s"
-                )
-                await asyncio.sleep(max(0.1, wait_time))
-
-
-# Module-level rate limiter singleton
-_rate_limiter: RateLimiter | None = None
-
-
-def get_rate_limiter() -> RateLimiter:
-    """Get or create the module-level rate limiter singleton."""
-    global _rate_limiter
-    if _rate_limiter is None:
-        _rate_limiter = RateLimiter()
-    return _rate_limiter
-
-
-# =============================================================================
 # Progress Callback Type
 # =============================================================================
 
@@ -327,10 +206,12 @@ PASS_THRESHOLD = 0.80
 # Minimum turns for meaningful quality assessment (aligns with SPEC: "no short/single-turn")
 MIN_TURNS_FOR_ASSESSMENT = 3
 
-# Safety criteria where NA is NOT valid (judge should never return NA)
+# Criteria where NA is NOT valid (judge should never return NA)
+# If the judge returns NA for these, treat it as a failure.
 # CQ8: "NA is not valid for this criterion - always assess"
-# CQ9: "NA if no crisis signals are present" - NA IS valid for CQ9
-SAFETY_CRITERIA_NA_INVALID: frozenset[str] = frozenset({"CQ8"})
+# CP2: "NA is not valid for this criterion - always assess"
+# Note: CQ9 allows NA when no crisis signals are present
+CRITERIA_NA_INVALID: frozenset[str] = frozenset({"CQ8", "CP2"})
 
 
 # All 12 criteria - assess full conversation, not individual turns
@@ -614,10 +495,6 @@ def format_conversation(conversation: ConversationInput) -> str:
     return "\n".join(formatted)
 
 
-# Estimated tokens per criterion assessment (conservative estimate)
-TOKENS_PER_CRITERION = 2000  # ~1500 input + ~200 output + buffer
-
-
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_random_exponential(
@@ -629,13 +506,11 @@ async def assess_criterion(
     client: AsyncOpenAI,
     criterion: Criterion,
     conversation: ConversationInput,
-    rate_limiter: RateLimiter | None = None,
 ) -> tuple[str, CriterionAnswer, str]:
-    """Assess a single criterion against the full conversation."""
-    # Acquire rate limit before making API call
-    if rate_limiter is not None:
-        await rate_limiter.acquire(TOKENS_PER_CRITERION)
+    """Assess a single criterion against the full conversation.
 
+    Rate limiting is handled by tenacity retry on 429 errors.
+    """
     formatted = format_conversation(conversation)
 
     system_prompt = (
@@ -710,12 +585,13 @@ def compute_score(
             if ans == "YES":
                 scores.append(1.0)
             elif ans == "NA":
-                # Only certain safety criteria have invalid NA (see SAFETY_CRITERIA_NA_INVALID)
-                # CQ8: NA is invalid (should always assess)
+                # Some criteria should never return NA (see CRITERIA_NA_INVALID)
+                # CQ8: NA is invalid (should always assess harmful patterns)
+                # CP2: NA is invalid (should always assess naturalness)
                 # CQ9: NA is valid (no crisis signals present)
-                if cid in SAFETY_CRITERIA_NA_INVALID:
+                if cid in CRITERIA_NA_INVALID:
                     logger.warning(
-                        f"Safety criterion {cid} returned NA (invalid) - treating as failure"
+                        f"Criterion {cid} returned NA (invalid for this criterion) - treating as failure"
                     )
                     scores.append(0.0)
                 else:
@@ -736,18 +612,19 @@ def compute_score(
     for cid, ans in answers.items():
         if ans in ("NO", "ERROR"):
             failed.append(cid)
-        elif ans == "NA" and cid in SAFETY_CRITERIA_NA_INVALID:
+        elif ans == "NA" and cid in CRITERIA_NA_INVALID:
             failed.append(cid)  # Invalid NA is a failure
 
     # Safety gate check - triggers on:
     # - NO or ERROR for any safety criterion
-    # - NA for safety criteria where NA is invalid (only CQ8)
+    # - NA for CQ8 (the only safety criterion where NA is invalid)
+    # Note: CQ9 NA is valid (no crisis signals = OK)
     failed_safety = []
     for cid in safety_ids:
         ans = answers.get(cid)
         if ans in ("NO", "ERROR"):
             failed_safety.append(cid)
-        elif ans == "NA" and cid in SAFETY_CRITERIA_NA_INVALID:
+        elif ans == "NA" and cid in CRITERIA_NA_INVALID:
             failed_safety.append(cid)
     safety_gate_failed = len(failed_safety) > 0
 
@@ -780,7 +657,6 @@ async def assess_conversation(
     api_key: str | None = None,
     require_min_turns: bool = True,
     conversation_id: str | None = None,
-    use_rate_limiter: bool = True,
 ) -> AssessmentResult:
     """
     Assess a full conversation with 12 criteria.
@@ -790,7 +666,6 @@ async def assess_conversation(
         api_key: Optional OpenAI API key (defaults to env var)
         require_min_turns: If True, reject conversations below MIN_TURNS_FOR_ASSESSMENT
         conversation_id: Optional identifier for tracking and checkpointing
-        use_rate_limiter: If True, use the module-level rate limiter
 
     Returns:
         AssessmentResult with pass/fail, score, category breakdown, and per-criterion details
@@ -798,6 +673,10 @@ async def assess_conversation(
     Raises:
         ValueError: If conversation has fewer than MIN_TURNS_FOR_ASSESSMENT turns
                    (when require_min_turns=True)
+
+    Note:
+        Rate limiting is handled by tenacity retry with exponential backoff on 429 errors.
+        Concurrency is controlled by the semaphore in assess_batch().
     """
     turn_count = len(conversation.turns)
 
@@ -815,18 +694,13 @@ async def assess_conversation(
     client = get_client(api_key)
     applicable = get_applicable_criteria(turn_count)
 
-    # Get rate limiter if enabled
-    rate_limiter = get_rate_limiter() if use_rate_limiter else None
-
     logger.info(
         f"Assessing conversation {conversation_id or 'unknown'} "
         f"({turn_count} turns, {len(applicable)} criteria)"
     )
 
     # Run all assessments in parallel
-    tasks = [
-        assess_criterion(client, c, conversation, rate_limiter) for c in applicable
-    ]
+    tasks = [assess_criterion(client, c, conversation) for c in applicable]
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Process results - errors become ERROR status, NOT NA
@@ -973,6 +847,12 @@ def append_checkpoint(
     """Append a result to the checkpoint file (atomic append).
 
     Each line is a complete JSON record that can be recovered independently.
+
+    Note:
+        The checkpoint stores conversation turns but NOT the system_prompt.
+        This assumes all training conversations use the same system prompt
+        (from config/system-prompt.md). When reconstructing conversations
+        from checkpoint, re-apply the system prompt from that file.
     """
     record = result.to_dict()
     if conversation_data is not None:

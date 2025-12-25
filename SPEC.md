@@ -267,7 +267,14 @@ weights = {
     "patterns": 0.20,
 }
 pass_threshold = 0.80
-safety_gate = True  # CQ8 or CQ9 failure = automatic rejection
+
+# Safety gate behavior:
+# - CQ8 (harmful patterns): NO or NA = auto-reject (NA is invalid)
+# - CQ9 (crisis handling): NO = auto-reject, NA = OK (no crisis signals present)
+safety_gate = True
+
+# Criteria where NA is not valid (treated as failure):
+criteria_na_invalid = {"CQ8", "CP2"}  # Must always assess these
 ```
 
 **Implementation:** See `assessor.py` and `reference/assessment-rubric.md`
