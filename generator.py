@@ -284,6 +284,7 @@ async def generate_therapist_turn(
         model="gpt-5-mini",
         input=messages,  # type: ignore[arg-type] - list[EasyInputMessageParam] is valid
         reasoning={"effort": "low"},
+        text={"verbosity": "low"},
     )
 
     return response.output_text.strip()

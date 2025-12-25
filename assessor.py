@@ -536,6 +536,7 @@ async def assess_criterion(
         input=[system_msg, user_msg],
         text_format=AssessmentAnswer,
         reasoning={"effort": "medium"},
+        text={"verbosity": "low"},
         max_output_tokens=800,
     )
 
