@@ -158,7 +158,7 @@ async def generate_persona(
 
     user_msg: EasyInputMessageParam = {"role": "user", "content": prompt}
     response = await client.responses.create(
-        model="gpt-5-mini",
+        model="gpt-5-nano",
         input=[user_msg],
         reasoning={"effort": "low"},
     )
@@ -262,7 +262,7 @@ async def generate_user_turn(
 
     user_msg: EasyInputMessageParam = {"role": "user", "content": prompt}
     response = await client.responses.create(
-        model="gpt-5-mini",
+        model="gpt-5-nano",
         input=[user_msg],
         reasoning={"effort": "low"},
     )
@@ -281,7 +281,7 @@ async def generate_therapist_turn(
     messages: list[EasyInputMessageParam] = [system_msg, *history]
 
     response = await client.responses.create(
-        model="gpt-5-mini",
+        model="gpt-5-nano",
         input=messages,  # type: ignore[arg-type] - list[EasyInputMessageParam] is valid
         reasoning={"effort": "low"},
         text={"verbosity": "low"},
