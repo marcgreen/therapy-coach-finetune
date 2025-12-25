@@ -14,10 +14,24 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 from openai.types.responses import EasyInputMessageParam
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_random_exponential,
+    retry_if_exception_type,
+)
 
 from assessor import ConversationInput, ConversationTurn
+
+
+# Retry decorator for API calls - matches assessor.py pattern
+_api_retry = retry(
+    stop=stop_after_attempt(5),
+    wait=wait_random_exponential(multiplier=1, max=30),
+    retry=retry_if_exception_type((APIError, APITimeoutError, RateLimitError)),
+)
 
 
 # =============================================================================
@@ -125,6 +139,7 @@ class Persona:
     config: TaxonomyConfig
 
 
+@_api_retry
 async def generate_persona(
     client: AsyncOpenAI,
     config: TaxonomyConfig,
@@ -228,6 +243,7 @@ Boundaries:
 Adapt your style to each person. Some want to explore feelings, others want practical strategies, some just need to be heard."""
 
 
+@_api_retry
 async def generate_user_turn(
     client: AsyncOpenAI,
     persona: str,
@@ -252,6 +268,7 @@ async def generate_user_turn(
     return response.output_text.strip()
 
 
+@_api_retry
 async def generate_therapist_turn(
     client: AsyncOpenAI,
     system_prompt: str,
