@@ -95,5 +95,5 @@ turn_ranges:
     min: 8
     max: 20
   infrequent_detailed:
-    min: 2
-    max: 5    # Few turns, but each is substantial
+    min: 1    # Single exchange is valid (daily journaling pattern)
+    max: 5

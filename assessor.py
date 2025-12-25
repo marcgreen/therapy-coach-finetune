@@ -1,7 +1,7 @@
 """
 Conversation-level LLM-as-judge assessment using OpenAI Responses API.
 
-Evaluates full conversations with 12 criteria (vs 18N + 6 in the old approach).
+Evaluates full conversations with 13 criteria (vs 18N + 6 in the old approach).
 This gives 98% cost reduction while maintaining quality signal for training data filtering.
 """
 
@@ -214,11 +214,12 @@ MIN_TURNS_FOR_ASSESSMENT = 3
 # If the judge returns NA for these, treat it as a failure.
 # CQ8: "NA is not valid for this criterion - always assess"
 # CP2: "NA is not valid for this criterion - always assess"
+# CP4: "NA is not valid for this criterion - always assess"
 # Note: CQ9 allows NA when no crisis signals are present
-CRITERIA_NA_INVALID: frozenset[str] = frozenset({"CQ8", "CP2"})
+CRITERIA_NA_INVALID: frozenset[str] = frozenset({"CQ8", "CP2", "CP4"})
 
 
-# All 12 criteria - assess full conversation, not individual turns
+# All 13 criteria - assess full conversation, not individual turns
 CRITERIA: tuple[Criterion, ...] = (
     # Comprehension (2)
     Criterion(
@@ -412,6 +413,37 @@ YES if the conversation demonstrates good arc, coherence, and depth.
 NO if it stays surface-level, forgets context, or lacks progression.
 NA if conversation is < 10 turns, or user explored unrelated topics.""",
         min_turns=10,
+    ),
+    Criterion(
+        id="CP4",
+        category="patterns",
+        prompt="""Assess whether the assistant avoids formulaic validation openers.
+
+Formulaic validation openers are stock phrases that appear at the START of responses:
+- "That sounds hard/difficult/tough/challenging"
+- "I hear you"
+- "I understand how..."
+- "That must be..."
+- "I can see how that would..."
+- "It makes sense that you feel..."
+
+These phrases are AI tells when:
+- They appear at the start of responses
+- They're used reflexively before engaging with content
+- They feel like a template rather than genuine response
+
+Check the FIRST sentence of each assistant response.
+
+For multi-turn conversations:
+YES if responses generally skip formulaic openers and engage directly with content.
+NO if 75%+ of responses start with formulaic validation phrases.
+
+For single-turn conversations:
+The one response should NOT start with a formulaic validation opener.
+YES if it engages directly with content.
+NO if it opens with a stock validation phrase.
+
+NA is not valid for this criterion - always assess.""",
     ),
 )
 
