@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 from openai.types.responses import EasyInputMessageParam
 from tenacity import (
@@ -24,6 +25,9 @@ from tenacity import (
 )
 
 from assessor import ConversationInput, ConversationTurn
+
+# Load environment variables from .env file (must be before AsyncOpenAI() instantiation)
+load_dotenv()
 
 
 # Retry decorator for API calls - matches assessor.py pattern
@@ -157,7 +161,6 @@ async def generate_persona(
         model="gpt-5-mini",
         input=[user_msg],
         reasoning={"effort": "low"},
-        temperature=0.9,
     )
 
     result = json.loads(response.output_text)
@@ -262,7 +265,6 @@ async def generate_user_turn(
         model="gpt-5-mini",
         input=[user_msg],
         reasoning={"effort": "low"},
-        temperature=0.8,
     )
 
     return response.output_text.strip()
@@ -282,7 +284,6 @@ async def generate_therapist_turn(
         model="gpt-5-mini",
         input=messages,  # type: ignore[arg-type] - list[EasyInputMessageParam] is valid
         reasoning={"effort": "low"},
-        temperature=0.7,
     )
 
     return response.output_text.strip()

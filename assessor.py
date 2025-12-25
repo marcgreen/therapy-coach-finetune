@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Literal
 
+from dotenv import load_dotenv
 from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
 from openai.types.responses import EasyInputMessageParam
 from pydantic import BaseModel, Field
@@ -23,6 +24,9 @@ from tenacity import (
     wait_random_exponential,
     retry_if_exception_type,
 )
+
+# Load environment variables from .env file
+load_dotenv()
 
 # =============================================================================
 # Logging Configuration
@@ -532,8 +536,7 @@ async def assess_criterion(
         input=[system_msg, user_msg],
         text_format=AssessmentAnswer,
         reasoning={"effort": "medium"},
-        verbosity="low",
-        max_output_tokens=200,
+        max_output_tokens=800,
     )
 
     result = response.output_parsed
