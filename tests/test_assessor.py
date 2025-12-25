@@ -15,12 +15,18 @@ from assessor import (
     get_applicable_criteria,
 )
 
-# Type alias for test results - we cast str literals to CriterionAnswer
+# Type alias for test results
 type TestResult = tuple[str, CriterionAnswer, str]
+
+# Valid answers - runtime check catches typos that cast() would hide
+VALID_ANSWERS = frozenset({"YES", "NO", "NA", "ERROR"})
 
 
 def make_results(data: list[tuple[str, str, str]]) -> list[TestResult]:
-    """Convert test data to properly typed results."""
+    """Convert test data to properly typed results with validation."""
+    for cid, ans, _ in data:
+        if ans not in VALID_ANSWERS:
+            raise ValueError(f"Invalid answer '{ans}' for criterion {cid}")
     return [(cid, cast(CriterionAnswer, ans), reason) for cid, ans, reason in data]
 
 
