@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from tenacity import (
     retry,
     stop_after_attempt,
-    wait_exponential,
+    wait_random_exponential,
     retry_if_exception_type,
 )
 
@@ -37,14 +37,24 @@ class ConversationInput(BaseModel):
     """Validated conversation input for assessment."""
 
     turns: list[ConversationTurn] = Field(min_length=1)
+    system_prompt: str | None = Field(
+        default=None, description="Optional system prompt"
+    )
 
     @classmethod
-    def from_tuples(cls, data: list[tuple[str, str]]) -> "ConversationInput":
+    def from_tuples(
+        cls, data: list[tuple[str, str]], system_prompt: str | None = None
+    ) -> "ConversationInput":
         """Create from list of (user, assistant) tuples."""
-        return cls(turns=[ConversationTurn(user=u, assistant=a) for u, a in data])
+        return cls(
+            turns=[ConversationTurn(user=u, assistant=a) for u, a in data],
+            system_prompt=system_prompt,
+        )
 
     @classmethod
-    def from_list(cls, data: list[list[str]]) -> "ConversationInput":
+    def from_list(
+        cls, data: list[list[str]], system_prompt: str | None = None
+    ) -> "ConversationInput":
         """Create from list of [user, assistant] lists (JSON-friendly)."""
         turns = []
         for item in data:
@@ -53,11 +63,60 @@ class ConversationInput(BaseModel):
                     f"Each turn must have exactly 2 elements, got {len(item)}"
                 )
             turns.append(ConversationTurn(user=item[0], assistant=item[1]))
-        return cls(turns=turns)
+        return cls(turns=turns, system_prompt=system_prompt)
+
+    @classmethod
+    def from_messages(cls, messages: list[dict[str, str]]) -> "ConversationInput":
+        """Create from TRL-compatible messages format.
+
+        Accepts: [{"role": "system/user/assistant", "content": "..."}]
+        This is the canonical format for HuggingFace SFTTrainer.
+        """
+        system_prompt = None
+        turns: list[ConversationTurn] = []
+        current_user: str | None = None
+
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+
+            if role == "system":
+                system_prompt = content
+            elif role == "user":
+                if current_user is not None:
+                    # Two user messages in a row - treat as continuation
+                    current_user = f"{current_user}\n{content}"
+                else:
+                    current_user = content
+            elif role == "assistant":
+                if current_user is None:
+                    raise ValueError("Assistant message without preceding user message")
+                turns.append(ConversationTurn(user=current_user, assistant=content))
+                current_user = None
+
+        if current_user is not None:
+            raise ValueError(
+                "Conversation ends with user message, no assistant response"
+            )
+
+        if not turns:
+            raise ValueError("No complete turns found in messages")
+
+        return cls(turns=turns, system_prompt=system_prompt)
 
     def to_tuples(self) -> list[tuple[str, str]]:
         """Convert to list of (user, assistant) tuples."""
         return [(t.user, t.assistant) for t in self.turns]
+
+    def to_messages(self) -> list[dict[str, str]]:
+        """Convert to TRL-compatible messages format."""
+        messages: list[dict[str, str]] = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        for turn in self.turns:
+            messages.append({"role": "user", "content": turn.user})
+            messages.append({"role": "assistant", "content": turn.assistant})
+        return messages
 
 
 class AssessmentAnswer(BaseModel):
@@ -93,6 +152,8 @@ CATEGORY_WEIGHTS: dict[str, float] = {
 }
 
 PASS_THRESHOLD = 0.80
+# Minimum turns for meaningful quality assessment (aligns with SPEC: "no short/single-turn")
+MIN_TURNS_FOR_ASSESSMENT = 3
 
 
 # All 12 criteria - assess full conversation, not individual turns
@@ -355,8 +416,15 @@ class AssessmentResult:
 
 
 def format_conversation(conversation: ConversationInput) -> str:
-    """Format a multi-turn conversation for assessment."""
+    """Format a multi-turn conversation for assessment, including system prompt."""
     formatted = []
+
+    # Include system prompt if present - helps judge evaluate appropriateness
+    if conversation.system_prompt:
+        formatted.append("--- System Prompt ---")
+        formatted.append(conversation.system_prompt)
+        formatted.append("")
+
     for i, turn in enumerate(conversation.turns, 1):
         formatted.append(f"--- Turn {i} ---")
         formatted.append(f"User: {turn.user}")
@@ -367,7 +435,9 @@ def format_conversation(conversation: ConversationInput) -> str:
 
 @retry(
     stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
+    wait=wait_random_exponential(
+        multiplier=1, max=30
+    ),  # Full jitter to avoid thundering herd
     retry=retry_if_exception_type((APIError, APITimeoutError, RateLimitError)),
 )
 async def assess_criterion(
@@ -476,6 +546,7 @@ def compute_score(
 async def assess_conversation(
     conversation: ConversationInput,
     api_key: str | None = None,
+    require_min_turns: bool = True,
 ) -> AssessmentResult:
     """
     Assess a full conversation with 12 criteria.
@@ -483,12 +554,28 @@ async def assess_conversation(
     Args:
         conversation: Validated conversation input
         api_key: Optional OpenAI API key (defaults to env var)
+        require_min_turns: If True, reject conversations below MIN_TURNS_FOR_ASSESSMENT
 
     Returns:
         AssessmentResult with pass/fail, score, category breakdown, and per-criterion details
+
+    Raises:
+        ValueError: If conversation has fewer than MIN_TURNS_FOR_ASSESSMENT turns
+                   (when require_min_turns=True)
     """
-    client = AsyncOpenAI(api_key=api_key)
     turn_count = len(conversation.turns)
+
+    # Reject conversations that are too short for meaningful assessment
+    # This prevents gaming the rubric by submitting 1-2 turn conversations
+    # where most criteria return NA (counted as pass)
+    if require_min_turns and turn_count < MIN_TURNS_FOR_ASSESSMENT:
+        raise ValueError(
+            f"Conversation has {turn_count} turns, minimum {MIN_TURNS_FOR_ASSESSMENT} "
+            f"required for meaningful quality assessment. Set require_min_turns=False "
+            f"to override (not recommended for training data)."
+        )
+
+    client = AsyncOpenAI(api_key=api_key)
     applicable = get_applicable_criteria(turn_count)
 
     # Run all assessments in parallel
@@ -552,22 +639,34 @@ def print_results(result: AssessmentResult) -> None:
 
 
 def load_conversation_from_file(file_path: Path) -> ConversationInput:
-    """Load and validate conversation from JSON file."""
+    """Load and validate conversation from JSON file.
+
+    Supports three formats:
+    1. TRL messages format (canonical): {"messages": [{"role": "...", "content": "..."}]}
+    2. Turns format: {"turns": [{"user": "...", "assistant": "..."}]}
+    3. Simple list: [["user msg", "assistant msg"], ...]
+    """
     with open(file_path) as f:
         data = json.load(f)
 
-    # Support both formats:
-    # 1. List of [user, assistant] pairs: [[u1, a1], [u2, a2], ...]
-    # 2. Object with "turns" key: {"turns": [{"user": u1, "assistant": a1}, ...]}
     if isinstance(data, list):
+        # Format 3: List of [user, assistant] pairs
         return ConversationInput.from_list(data)
-    elif isinstance(data, dict) and "turns" in data:
-        return ConversationInput.model_validate(data)
+    elif isinstance(data, dict):
+        if "messages" in data:
+            # Format 1: TRL messages format (canonical for HuggingFace SFTTrainer)
+            return ConversationInput.from_messages(data["messages"])
+        elif "turns" in data:
+            # Format 2: Turns format (internal format)
+            return ConversationInput.model_validate(data)
+        else:
+            raise ValueError("Invalid dict format. Expected 'messages' or 'turns' key.")
     else:
         raise ValueError(
-            "Invalid format. Expected either:\n"
-            '  - List of [user, assistant] pairs: [["hello", "hi"], ...]\n'
-            '  - Object with turns: {"turns": [{"user": "hello", "assistant": "hi"}, ...]}'
+            "Invalid format. Expected one of:\n"
+            '  - TRL messages: {"messages": [{"role": "user", "content": "..."}, ...]}\n'
+            '  - Turns format: {"turns": [{"user": "...", "assistant": "..."}, ...]}\n'
+            '  - Simple list: [["user msg", "assistant msg"], ...]'
         )
 
 
@@ -576,23 +675,35 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python assessor.py <conversation.json>")
         print()
-        print("Input file format (choose one):")
-        print('  1. List of pairs: [["user msg", "assistant msg"], ...]')
-        print('  2. Object: {"turns": [{"user": "...", "assistant": "..."}, ...]}')
+        print("Input file formats (choose one):")
+        print(
+            '  1. TRL messages (recommended): {"messages": [{"role": "...", "content": "..."}]}'
+        )
+        print(
+            '  2. Turns format: {"turns": [{"user": "...", "assistant": "..."}, ...]}'
+        )
+        print('  3. Simple list: [["user msg", "assistant msg"], ...]')
         print()
-        print('Use - for stdin: echo \'[["hi","hello"]]\' | python assessor.py -')
+        print("Use - for stdin: cat conversation.json | python assessor.py -")
         sys.exit(1)
 
     input_path = sys.argv[1]
 
     try:
         if input_path == "-":
-            # Read from stdin
+            # Read from stdin - use same logic as load_conversation_from_file
             data = json.load(sys.stdin)
             if isinstance(data, list):
                 conversation = ConversationInput.from_list(data)
+            elif isinstance(data, dict):
+                if "messages" in data:
+                    conversation = ConversationInput.from_messages(data["messages"])
+                elif "turns" in data:
+                    conversation = ConversationInput.model_validate(data)
+                else:
+                    raise ValueError("Expected 'messages' or 'turns' key in object")
             else:
-                conversation = ConversationInput.model_validate(data)
+                raise ValueError("Expected list or object")
         else:
             # Read from file
             conversation = load_conversation_from_file(Path(input_path))

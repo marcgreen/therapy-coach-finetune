@@ -268,6 +268,28 @@ def conversation_metric(example, pred, trace=None):
 
 ---
 
+## Pilot Calibration (Before Scaling)
+
+**Run a pilot of 50-100 conversations before scaling to full volume.**
+
+The pilot serves to:
+1. **Calibrate pass rate expectations** — 50% assumed, may be higher or lower
+2. **Identify systematic failures** — which criteria fail most?
+3. **Tune rubric thresholds** — 0.80 may be too strict or lenient
+4. **Estimate costs** — tokens per conversation, API costs at scale
+
+**Decision criteria:**
+| Pass Rate | Action |
+|-----------|--------|
+| ≥50% | Proceed to scale |
+| 40-50% | Minor prompt iteration, then scale |
+| 25-40% | Major prompt revision needed |
+| <25% | Fundamental issue — revisit taxonomy or rubric |
+
+**Do not skip the pilot.** Generating 3K conversations at 15% pass rate wastes significant compute.
+
+---
+
 ## Phase 3: Evaluate
 
 Run every generated example through your evaluation rubric.

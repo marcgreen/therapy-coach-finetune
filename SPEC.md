@@ -150,11 +150,29 @@ Build a **privacy-first, locally-runnable therapeutic coaching model** that:
 
 - Generate: ~3-4K raw conversations
 - Filter at 0.80 threshold: ~1.5-2K conversations
+- **Holdout split: 10%** (stratified by topic/difficulty)
+  - Training: 90% → ~1.35-1.8K conversations
+  - Evaluation: 10% → ~150-200 conversations
 - Turn count: 22K-60K turns of training signal
   - Lower bound: 1.5K convos × 15 turns = 22.5K turns
   - Upper bound: 2K convos × 30 turns = 60K turns
 - Token estimate: ~3-8M tokens total
   - ~200 tokens per message average × 2 messages per turn × 22-60K turns
+
+### Pilot Calibration (Before Scaling)
+
+**Run a pilot of 100 conversations before scaling to full volume.**
+
+The pilot serves to:
+1. Calibrate pass rate expectations (50% assumed, may be lower)
+2. Identify systematic failures in generation prompts
+3. Tune rubric thresholds if needed
+4. Estimate actual generation costs
+
+**Decision criteria:**
+- Pass rate ≥40%: Proceed to scale, iterate prompts if below 50%
+- Pass rate 25-40%: Major prompt revision needed before scaling
+- Pass rate <25%: Fundamental issue — revisit taxonomy or rubric
 
 ### Data Format (SFT)
 
@@ -408,6 +426,31 @@ optimized = optimizer.compile(
 - `config/generation-prompt.md` — Optimized after DSPy iteration
 - Conversation generator script — Code from SKILL spec
 - DSPy dependency + optimization pipeline
+- Unit tests for assessor scoring logic (see TODO below)
+
+---
+
+## TODO: Testing
+
+**Use TDD for critical scoring logic.** The assessor's scoring logic is complex (weighted categories, safety gate, conditional criteria) and bugs here silently corrupt training data.
+
+**Required tests:**
+1. `compute_score()` — weighted category scoring
+2. Safety gate behavior (any safety failure = auto-reject)
+3. NA handling (should count as pass, not affect score)
+4. ERROR handling (should count as failure)
+5. Minimum turn enforcement
+6. Edge cases: all-NA category, all-ERROR, mixed results
+
+**Test approach:**
+- Mock API responses to test scoring in isolation
+- Use known-good/known-bad conversations for integration tests
+- Property-based testing for edge case coverage
+
+**Run before any training job:**
+```bash
+uv run pytest tests/test_assessor.py -v
+```
 
 ---
 
