@@ -110,3 +110,84 @@ cast(CriterionAnswer, ans)  # Now safe
 - Use `asyncio` for concurrent I/O operations
 - Prefer `asyncio.gather()` for parallel execution
 - Use `AsyncOpenAI` client for openai API calls (and always use responses api, not chat completions)
+
+## Testing: Verify Requirements, Not Implementation
+
+### The Core Question
+
+Before writing a test, ask: **"What bug would this catch?"**
+
+If the answer is "none" or "it verifies the code does what the code does," the test is useless.
+
+### Good Tests vs Bad Tests
+
+**Bad: Hardcoded magic numbers from implementation**
+```python
+def test_weighted_score(self):
+    result = compute_score(results, criteria)
+    assert result.score == 0.85  # Where does 0.85 come from? The code.
+```
+This test breaks if you intentionally change weights. It doesn't know if that's a bug or a feature.
+
+**Good: Test the formula, not the result**
+```python
+def test_weighted_score_matches_formula(self):
+    result = compute_score(results, criteria)
+    expected = sum(
+        result.category_scores[cat] * CATEGORY_WEIGHTS[cat]
+        for cat in CATEGORY_WEIGHTS
+    )
+    assert result.score == pytest.approx(expected)
+```
+This test verifies the *invariant* (score = weighted sum) regardless of what the weights are.
+
+**Bad: Tautological test**
+```python
+def test_all_yes_gives_perfect_score(self):
+    # ... all YES answers ...
+    assert result.score == 1.0  # Why 1.0? Because the code says so.
+```
+
+**Good: Test business invariants**
+```python
+def test_score_is_bounded(self):
+    """Score must always be between 0 and 1."""
+    assert 0.0 <= result.score <= 1.0
+
+def test_safety_gate_implies_failure(self):
+    """If safety gate failed, passed must be False (regardless of score)."""
+    if result.safety_gate_failed:
+        assert result.passed is False
+
+def test_more_yes_means_higher_or_equal_score(self):
+    """Monotonicity: replacing NO with YES should never decrease score."""
+    # ...
+```
+
+### Test Hierarchy (Prefer Earlier Types)
+
+1. **Property/invariant tests** — "For all valid inputs, X is always true"
+2. **Boundary tests** — Edge cases, empty inputs, off-by-one
+3. **Example tests** — Specific inputs → specific outputs (use sparingly)
+
+### Red Flags in Tests
+
+| Red Flag | Problem |
+|----------|---------|
+| Magic numbers (`0.85`, `42`) | Coupled to implementation, not requirements |
+| Testing mocks | Verifies nothing about real behavior |
+| Identical structure, different data | Probably redundant |
+| No edge cases | Missing empty, null, boundary conditions |
+| Test name describes implementation | Should describe requirement |
+
+### What to Test
+
+- **Pure functions** — Easy to test, high value. Test invariants.
+- **Business rules** — "Safety failure = rejection" is a real requirement.
+- **Edge cases** — Empty inputs, missing data, boundary values.
+
+### What NOT to Test
+
+- **Implementation details** — Internal data structures, private methods.
+- **Third-party code** — Don't test that `json.loads` works.
+- **Mocks** — If you're asserting on mock behavior, you're testing your test setup.
