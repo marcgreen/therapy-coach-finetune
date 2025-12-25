@@ -89,6 +89,11 @@ taxonomy:
     explicit: 0.30           # "What should I do?" / "Can you help me with..."
     implicit: 0.70           # Expresses feelings/experiences, expects guidance without asking
 
+  # Cognitive patterns in user messages - tests CQ10 (yes-bot detection)
+  cognitive_patterns:
+    balanced: 0.85           # Realistic perspective, even if distressed
+    distorted: 0.15          # Catastrophizing, all-or-nothing, mind-reading, overgeneralization
+
 # Turn ranges for length categories (used with frequent_short cadence)
 turn_ranges:
   frequent_short:

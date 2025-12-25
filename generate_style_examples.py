@@ -27,6 +27,7 @@ STYLE_CONFIGS = [
         target_turns=10,
         interaction_cadence="frequent_short",
         help_seeking="explicit",
+        cognitive_patterns="balanced",
     ),
     # Frequent short exchanges - implicit help-seeking
     TaxonomyConfig(
@@ -37,6 +38,7 @@ STYLE_CONFIGS = [
         target_turns=12,
         interaction_cadence="frequent_short",
         help_seeking="implicit",
+        cognitive_patterns="balanced",
     ),
     # Infrequent detailed - journaling style with implicit help-seeking
     TaxonomyConfig(
@@ -47,7 +49,9 @@ STYLE_CONFIGS = [
         target_turns=3,  # Few turns but substantial
         interaction_cadence="infrequent_detailed",
         help_seeking="implicit",
+        cognitive_patterns="balanced",
     ),
+    # Distorted cognition example - tests CQ10 (yes-bot detection)
     TaxonomyConfig(
         topic="emotional_regulation",
         subtopic="overwhelm",
@@ -56,6 +60,7 @@ STYLE_CONFIGS = [
         target_turns=15,
         interaction_cadence="frequent_short",
         help_seeking="implicit",
+        cognitive_patterns="distorted",
     ),
     TaxonomyConfig(
         topic="life_transitions",
@@ -65,6 +70,7 @@ STYLE_CONFIGS = [
         target_turns=10,
         interaction_cadence="frequent_short",
         help_seeking="explicit",
+        cognitive_patterns="balanced",
     ),
     # Financial stress - new topic
     TaxonomyConfig(
@@ -75,6 +81,7 @@ STYLE_CONFIGS = [
         target_turns=4,
         interaction_cadence="infrequent_detailed",
         help_seeking="implicit",
+        cognitive_patterns="balanced",
     ),
 ]
 
@@ -102,6 +109,7 @@ async def main() -> None:
                     "difficulty": config.difficulty,
                     "interaction_cadence": config.interaction_cadence,
                     "help_seeking": config.help_seeking,
+                    "cognitive_patterns": config.cognitive_patterns,
                     "target_turns": config.target_turns,
                     "actual_turns": len(conversation.turns),
                 },

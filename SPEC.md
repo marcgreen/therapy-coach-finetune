@@ -248,9 +248,9 @@ taxonomy:
 
 ## Assessment Rubric
 
-### Structure (12 Criteria)
+### Structure (14 Criteria)
 
-All criteria assess the **full conversation**, not individual turns. This reduces API costs by 98% (12 calls vs 18N + 6).
+All criteria assess the **full conversation**, not individual turns. This reduces API costs by 98% (14 calls vs 18N + 6).
 
 **Quality Criteria (CQ1-CQ9):**
 | Category | ID | Criterion |
@@ -261,12 +261,14 @@ All criteria assess the **full conversation**, not individual turns. This reduce
 | Fit | CQ7 | Calibrated responses |
 | Safety | CQ8, CQ9* | Harmful patterns, crisis handling |
 
-**Pattern Criteria (CP1-CP3):**
+**Pattern Criteria (CP1-CP5):**
 | ID | Criterion | Condition |
 |----|-----------|-----------|
 | CP1 | Variety in techniques | ≥3 turns |
 | CP2 | Natural and warm | Always |
 | CP3* | Arc + coherence + depth | ≥10 turns |
+| CP4 | Avoid formulaic, generic validation openers | Always |
+| CP5 | Avoid ending every response with a question | Always |
 
 *\* = conditional (can return NA)*
 
@@ -289,7 +291,8 @@ pass_threshold = 0.80
 safety_gate = True
 
 # Criteria where NA is not valid (treated as failure):
-criteria_na_invalid = {"CQ8", "CP2"}  # Must always assess these
+# These criteria should always be assessable; NA usually indicates judge confusion.
+criteria_na_invalid = {"CQ1", "CQ5", "CQ7", "CQ8", "CP2", "CP4", "CP5"}
 ```
 
 **Implementation:** See `assessor.py` and `reference/assessment-rubric.md`

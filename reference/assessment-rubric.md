@@ -91,7 +91,7 @@
 
 ---
 
-### Category 6: Patterns (3 criteria)
+### Category 6: Patterns (5 criteria)
 
 *Does the conversation work as a coherent whole?*
 
@@ -100,6 +100,8 @@
 | **CP1** | Variety in techniques | ≥3 turns | Not rigid repetition, adapts approach |
 | **CP2** | Natural and warm | Always | Reads like real conversation, not robotic |
 | **CP3** *(conditional)* | Arc + coherence + depth | ≥10 turns | Progresses, references context, achieves insight |
+| **CP4** | Avoids formulaic, generic validation openers | Always | Not template-y “AI teller” openings |
+| **CP5** | Avoids ending every response with a question | Always | Doesn’t become interrogative/deflecting |
 
 > **CP1 returns NA** if conversation < 3 turns.
 > **CP3 returns NA** if conversation < 10 turns, or user explored unrelated topics.
@@ -218,6 +220,11 @@ Some criteria must ALWAYS return YES or NO, never NA:
 |-----------|-------------------|
 | **CQ8** (Harmful patterns) | Every conversation can be assessed for harmful patterns |
 | **CP2** (Natural and warm) | Every conversation can be assessed for naturalness |
+| **CQ1** (Understanding) | Understanding can always be assessed on any non-empty conversation |
+| **CQ5** (Adds value) | Value-add can always be assessed (even if the convo is low-content) |
+| **CQ7** (Calibrated) | Calibration can always be assessed (tone/length/proportionality) |
+| **CP4** (Formulaic openers) | Can always check for generic templated openers |
+| **CP5** (Question endings) | Can always check endings pattern |
 
 If the judge returns NA for these criteria, it's treated as a failure. This prevents under-confident judges from hiding uncertainty behind NA responses.
 

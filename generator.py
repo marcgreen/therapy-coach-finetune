@@ -44,6 +44,7 @@ class TaxonomyConfig:
     target_turns: int
     interaction_cadence: str  # frequent_short or infrequent_detailed
     help_seeking: str  # explicit or implicit
+    cognitive_patterns: str  # balanced or distorted
 
 
 def load_taxonomy(path: Path = Path("config/input-taxonomy.yaml")) -> dict:
@@ -83,6 +84,11 @@ def sample_config(taxonomy: dict) -> TaxonomyConfig:
         list(help_seeking_opts.keys()), weights=list(help_seeking_opts.values()), k=1
     )[0]
 
+    cognitive_opts = taxonomy["taxonomy"]["cognitive_patterns"]
+    cognitive_patterns = random.choices(
+        list(cognitive_opts.keys()), weights=list(cognitive_opts.values()), k=1
+    )[0]
+
     # Turn count depends on interaction cadence
     turn_range = taxonomy["turn_ranges"][cadence]
     target_turns = random.randint(turn_range["min"], turn_range["max"])
@@ -95,6 +101,7 @@ def sample_config(taxonomy: dict) -> TaxonomyConfig:
         target_turns=target_turns,
         interaction_cadence=cadence,
         help_seeking=help_seeking,
+        cognitive_patterns=cognitive_patterns,
     )
 
 
@@ -130,6 +137,7 @@ SCENARIO:
 - Complexity: {difficulty}
 - Interaction cadence: {cadence}
 - Help-seeking style: {help_seeking}
+- Cognitive patterns: {cognitive_patterns}
 
 CLIENT STYLES:
 - terse: Short messages, few words
@@ -145,6 +153,18 @@ INTERACTION CADENCE:
 HELP-SEEKING STYLE:
 - explicit: Client directly asks questions ("What should I do?", "Can you help?")
 - implicit: Client expresses feelings and experiences without asking questions. They're implicitly looking for guidance but don't request it. Coach offers perspective and gentle suggestions naturally.
+
+COGNITIVE PATTERNS:
+- balanced: Client has realistic perspective even when distressed. Emotions are proportionate to situation.
+- distorted: Client shows cognitive distortions that coach should NOT validate:
+  * Catastrophizing: "Everything is ruined", "I'll never recover"
+  * All-or-nothing: "If I can't do it perfectly, why try at all"
+  * Mind-reading: "They all think I'm incompetent"
+  * Overgeneralization: "I always fail", "Nothing ever works"
+  * Self-defeating conclusions: "I should just give up"
+  Coach should acknowledge the FEELING without endorsing the distorted CONCLUSION.
+  Bad: "You're right, it does seem hopeless" (yes-bot)
+  Good: "I hear how exhausted you are. What's making it feel like there's no way forward?"
 
 COACH GUIDELINES:
 - Match message length to client's cadence
@@ -184,6 +204,7 @@ async def generate_conversation(
         difficulty=config.difficulty,
         cadence=config.interaction_cadence,
         help_seeking=config.help_seeking,
+        cognitive_patterns=config.cognitive_patterns,
     )
 
     user_msg: EasyInputMessageParam = {"role": "user", "content": prompt}
@@ -267,6 +288,7 @@ async def generate_batch(
                     "difficulty": config.difficulty,
                     "interaction_cadence": config.interaction_cadence,
                     "help_seeking": config.help_seeking,
+                    "cognitive_patterns": config.cognitive_patterns,
                     "turns": len(conversation.turns),
                 },
             }

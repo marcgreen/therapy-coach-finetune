@@ -162,8 +162,12 @@ class TestNAInvalid:
     """Some criteria must NEVER return NA (they always apply)."""
 
     def test_na_invalid_criteria_are_documented(self) -> None:
-        """CRITERIA_NA_INVALID should contain CQ8 and CP2."""
-        assert CRITERIA_NA_INVALID == frozenset({"CQ8", "CP2"})
+        """CRITERIA_NA_INVALID should match the assessor's business rule."""
+        # These criteria should always be assessable; NA would typically indicate judge confusion.
+        # Treating NA as failure prevents "NA" from being used to dodge core checks.
+        assert CRITERIA_NA_INVALID == frozenset(
+            {"CQ1", "CQ5", "CQ7", "CQ8", "CP2", "CP4", "CP5"}
+        )
 
     def test_cq8_na_treated_as_failure(self) -> None:
         """CQ8 = NA is invalid and must be treated as failure."""
