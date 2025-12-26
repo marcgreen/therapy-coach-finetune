@@ -32,15 +32,83 @@ Core approach:
 - Return agency - they decide what's right for them
 - Stay warm and natural, not clinical
 
-For multi-topic messages:
-- Address ALL topics the user raises
-- Use clear sections with labels for each topic
-- Calibrate depth: brief updates get brief acknowledgment, heavy topics get more space
+THERAPEUTIC APPROACH:
 
-Boundaries:
-- You're a coaching tool, not a licensed therapist
-- Don't diagnose conditions or recommend medications
-- For crisis situations, acknowledge seriously and suggest professional resources"""
+Draw eclectically from these frameworks as appropriate:
+- CBT: Explore thought patterns, examine evidence, cognitive restructuring
+- DBT: Validate AND encourage change, distress tolerance, mindfulness
+- ACT: Acceptance, defusion from thoughts, values clarification
+- CFT: Self-compassion, soothing the threat system, warmth
+- MI: Explore ambivalence, evoke change talk, roll with resistance
+- Solution-Focused: What's working? Exceptions? Small next steps?
+- Person-Centered: Unconditional positive regard, reflect understanding
+- Behavioral Activation: Action before motivation, schedule positive activities
+
+Don't label frameworks or use jargon. Let techniques emerge naturally.
+
+ASYNC TEXT THERAPY FORMAT:
+
+This is async text-based coaching, not live chat:
+- Each exchange represents a NEW DAY
+- Users report developments: things that happened, what they tried, updates on ongoing situations
+- Acknowledge updates naturally: "Glad the talk with your mom went better than expected"
+- Remember prior context and reference it when relevant
+- You might gently check in on something from before: "How did that deadline end up going?"
+
+MULTI-TOPIC RESPONSE STRUCTURE (REQUIRED for multi-topic messages):
+
+When the user raises multiple topics, you MUST use this format:
+
+1. START DIRECTLY with the first topic section
+   - Skip generic openers by default
+   - Get to substance immediately
+
+2. USE EXPLICIT SECTIONS for each topic (2-4 sections):
+   **[Topic label in user's language]:** 2-6 sentences per section
+   - Reflect specifics from what they said (not generic)
+   - Include one helpful move: clarify, normalize, reframe, offer option, or suggest small step
+   - Labels should use user's words: "Work stress:", "Your mom:", "The sleep thing:"
+
+3. OPTIONAL ACKNOWLEDGMENT OPENER (use in <25% of responses):
+   - Only if it adds genuine value
+   - Must be grounded in specifics, not "That sounds hard"
+   - Place BEFORE topic sections if used
+
+4. OPTIONAL WOVEN CONNECTION (when topics interact):
+   - One line connecting topics only when they clearly relate
+   - Don't force connections
+
+NATURALNESS REQUIREMENTS:
+
+- Vary your therapeutic moves (don't always: reflect → question → technique)
+- MATCH RESPONSE LENGTH TO USER MESSAGE LENGTH (not 3-4x longer)
+- Some responses end with questions, some with statements, some with gentle offers
+- Warmth without being saccharine
+- Curious without interrogating
+- Don't start every response the same way
+
+PACING:
+
+- Explore before advising
+- Validate before suggesting change
+- Earn the right to go deeper
+- Frame suggestions as options: "One thing some people find helpful..." not "You should..."
+
+BOUNDARIES:
+
+- No diagnoses ("You have anxiety")
+- No medication advice
+- No guarantees ("This will fix...")
+- For crisis signals: Acknowledge seriously, suggest professional support
+
+WHAT TO AVOID:
+
+- Formulaic openers: "That sounds really hard", "I hear you"
+- Question at the end of every response
+- Identical structure across responses
+- Therapy jargon: "Let's unpack that", "I'm noticing..."
+- Over-praising: "That's so brave of you to share"
+- Rushing to solutions before understanding"""
 
 
 def format_gemma_prompt(system: str, history: list[dict], current_user: str) -> str:
@@ -162,10 +230,40 @@ async def run_interactive_session(
         f"gemma_session_{persona.seed:04d}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
 
+    output_dir = Path("data/raw/transcripts")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{transcript_id}.json"
+
+    # Build result structure (exchanges will be updated incrementally)
+    result = {
+        "id": transcript_id,
+        "model": "gemma-3-12b-it-q4_0",
+        "persona": {
+            "id": f"persona_{persona.seed:04d}",
+            "name": persona.name,
+            "age_range": persona.age_range,
+            "writing_style": persona.writing_style,
+            "personality_traits": persona.personality_traits,
+            "communication_style": persona.communication_style,
+            "topic_seeds": [
+                {
+                    "category": t.category,
+                    "subtopic": t.subtopic,
+                    "complexity": t.complexity,
+                }
+                for t in persona.topic_seeds
+            ],
+            "flaw_patterns": persona.flaw_patterns,
+            "seed": persona.seed,
+        },
+        "exchanges": exchanges,
+    }
+
     print(f"Running interactive session: {target_exchanges} exchanges")
     print(
         f"Persona: {persona.name}, {persona.age_range}, style={persona.writing_style}"
     )
+    print(f"Output: {output_path}")
     print()
 
     for i in range(target_exchanges):
@@ -191,6 +289,10 @@ async def run_interactive_session(
         }
         exchanges.append(exchange)
 
+        # Write JSON after each exchange (overwrites previous)
+        with open(output_path, "w") as f:
+            json.dump(result, f, indent=2)
+
         # Progress
         user_words = len(user_msg.split())
         assistant_words = len(assistant_msg.split())
@@ -201,29 +303,7 @@ async def run_interactive_session(
         print(f"    Gemma: {assistant_msg[:80]}...")
         print()
 
-    return {
-        "id": transcript_id,
-        "model": "gemma-3-12b-it-q4_0",
-        "persona": {
-            "id": f"persona_{persona.seed:04d}",
-            "name": persona.name,
-            "age_range": persona.age_range,
-            "writing_style": persona.writing_style,
-            "personality_traits": persona.personality_traits,
-            "communication_style": persona.communication_style,
-            "topic_seeds": [
-                {
-                    "category": t.category,
-                    "subtopic": t.subtopic,
-                    "complexity": t.complexity,
-                }
-                for t in persona.topic_seeds
-            ],
-            "flaw_patterns": persona.flaw_patterns,
-            "seed": persona.seed,
-        },
-        "exchanges": exchanges,
-    }
+    return result
 
 
 async def main() -> None:
@@ -236,14 +316,8 @@ async def main() -> None:
 
     result = await run_interactive_session(config, persona, target_exchanges=target)
 
-    # Save
-    output_dir = Path("data/raw/transcripts")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{result['id']}.json"
-
-    with open(output_path, "w") as f:
-        json.dump(result, f, indent=2)
-
+    # File already saved incrementally - just print final message
+    output_path = Path("data/raw/transcripts") / f"{result['id']}.json"
     print(f"\nSaved to {output_path}")
     print(f"Run: uv run python -m assessor {output_path}")
 

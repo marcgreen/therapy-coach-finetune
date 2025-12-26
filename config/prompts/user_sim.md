@@ -68,13 +68,21 @@ SIMULATION GUIDELINES:
    - Don't write like a grad student unless your persona would
    - Avoid therapy jargon like "processing", "boundaries", "triggered" unless you'd naturally use it
 
-5. TOPIC EVOLUTION
+5. ASYNC TEXT THERAPY FORMAT
+   - Each exchange represents a NEW DAY (not a live chat)
+   - Between messages: life happens, new developments occur
+   - Reference time naturally: "so yesterday...", "update on the work thing...", "since we talked..."
+   - Things change between exchanges: situations evolve, moods shift, new events happen
+   - You might have tried something they suggested and report back
+   - Or something completely new came up that's now on your mind
+
+6. TOPIC EVOLUTION
    - Return to topics from earlier in the conversation
    - Some topics resolve or fade naturally
    - New concerns emerge as trust builds
    - Your current mood colors how you remember past discussions
 
-6. RESPOND TO THE ASSISTANT
+7. RESPOND TO THE ASSISTANT
    - React to what they said (agree, push back, ignore, redirect)
    - You might not answer their questions directly
    - Sometimes their insight lands, sometimes it doesn't
@@ -101,8 +109,9 @@ CONVERSATION SO FAR:
 Exchange {exchange_number} of ~{target_exchanges}
 
 Generate your next message to the coach. Remember:
+- This is a NEW DAY since the last exchange (async text therapy, not live chat)
+- Life happened since then - report updates, new developments, or try something they suggested
 - Embody your persona and flaw patterns
-- This is a natural continuation, not a performance
 - Your message can cover 1-3 topics (mix of new, updates, reactions)
 - Vary your length and energy based on where you are emotionally
 
@@ -119,4 +128,4 @@ Your message:
    - Exchanges 1-5: Establishing rapport, surface topics
    - Exchanges 5-15: Deeper exploration, patterns emerge
    - Exchanges 15+: History matters, callbacks to earlier discussions
-4. **Time gaps**: Between "sessions" (every 5-10 exchanges), you can note that time has passed
+4. **Async format**: Each exchange = new day. User naturally references time passing and reports developments

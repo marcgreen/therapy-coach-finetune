@@ -371,25 +371,29 @@ NA is not valid for this criterion - always assess.""",
     Criterion(
         id="CP4",
         category="naturalness",
-        prompt="""Assess whether the assistant avoids formulaic, generic validation openers.
+        prompt="""Assess whether the assistant avoids formulaic, repetitive openers.
 
-The problem isn't validation—it's HOLLOWNESS. Check for:
+Check for TWO types of formulaic patterns:
 
-1. Sentential Redundancy:
-- Do multiple responses start with identical or near-identical stock phrases?
-- If the first 10 words could be swapped between responses, it's formulaic.
+1. HOLLOW VALIDATION:
+- Stock phrases: "That sounds hard", "I hear you", "I understand how"
+- These are AI tells when used reflexively WITHOUT grounding in specifics
 
-2. Lack of Grounding:
-- Formulaic openers: "That sounds hard", "I hear you", "I understand how"
-- These are AI tells when used reflexively WITHOUT grounding in specific details
+2. OVER-PRAISING (equally problematic):
+- Stacked adjectives: "That's profoundly beautiful", "That's incredibly insightful"
+- Excessive praise: "That's wonderful", "That's amazing", "That's remarkable"
+- Pattern: "That's [a] [adverb] [adjective]..." repeated across responses
 
-EXCEPTION - Grounded Validation:
-Do NOT penalize a validating opener if it IMMEDIATELY grounds in specifics.
-- BAD: "That sounds hard." (generic)
-- GOOD: "That sounds exhausting—having your boss pile on projects while dismissing your concerns." (grounded)
+BOTH patterns fail when repetitive:
+- If 75%+ of responses start with "That's [adjective]..." = formulaic
+- If the first 5-10 words are structurally identical across responses = formulaic
 
-YES if responses skip formulaic openers OR ground validation in specific details.
-NO if 75%+ of responses start with ungrounded stock validation phrases.
+EXCEPTION - Grounded or Varied:
+- OK if praise is grounded in specifics: "That's a big shift—you went from avoiding him to initiating."
+- OK if openers genuinely vary (some questions, some statements, some topic-first)
+
+YES if responses vary their openings AND avoid repetitive patterns.
+NO if 75%+ of responses start with the same structural pattern (validation OR praise).
 NA if conversation is too short to assess patterns.""",
     ),
     Criterion(
