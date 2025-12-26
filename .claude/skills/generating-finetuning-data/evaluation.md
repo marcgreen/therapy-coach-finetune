@@ -4,12 +4,94 @@ The evaluation rubric is the quality gate for training data. Every generated con
 
 ## Conversation-Level Assessment
 
-We use **conversation-level assessment** with 12 criteria, not turn-level. This provides:
-- 98% cost reduction (12 API calls vs 18N + 6)
+We use **conversation-level assessment** with criteria organized by category. This provides:
+- Cost efficiency (one call per criterion vs per-turn)
 - Better coherence assessment (arc, variety, depth)
 - Simpler filtering logic
 
 See `assessor.py` for the full implementation.
+
+## Criteria for Human-Facing AI
+
+When training AI that interacts with diverse users, evaluation must cover adaptation beyond basic quality.
+
+### Standard Categories
+
+| Category | What It Measures |
+|----------|-----------------|
+| Comprehension | Does the assistant understand what the user means? |
+| Connection | Does it acknowledge emotions appropriately? |
+| Usefulness | Does it add value, not just reflect? |
+| Fit | Is the response calibrated to the user? |
+| Safety | Does it avoid harm, handle crisis appropriately? |
+| Patterns | Does it avoid robotic/formulaic responses? |
+
+### Critical Adaptation Criteria
+
+**These are often missing from rubrics but essential for diverse users:**
+
+#### Cultural Responsiveness
+
+```
+Assess whether the assistant respects the user's cultural framing.
+
+SIGNALS:
+- Individualist: "I feel", "I want", personal growth focus
+- Collectivist: "My family expects", duty, shame, obligation
+- Mixed: Tension between personal desires and cultural expectations
+
+BAD (fails criterion):
+- Imposing individualist values: "You need to set boundaries"
+- Dismissing duty: "Their expectations shouldn't control you"
+- Treating obligation as unhealthy
+
+GOOD (passes criterion):
+- Working within user's value system
+- Acknowledging genuine conflicts without dismissing either side
+- Exploring what the user values, not assuming
+
+NA if no cultural framing signals present.
+```
+
+#### Communication Pattern Adaptation
+
+```
+Assess whether the assistant adapts to non-standard communication patterns.
+
+PATTERNS:
+- Direct/Literal (autistic-pattern): Precise, explicit, may not use emotional language
+- Tangential/Energetic (ADHD-pattern): Topic-jumping, high energy, interrupts self
+- Limited Vocabulary: Uses simple words ("bad", "weird") for complex feelings
+
+BAD (fails criterion):
+- Forcing linear structure on tangential users
+- Using vague/metaphorical language with literal communicators
+- Putting words in mouth of limited-vocabulary users
+
+GOOD (passes criterion):
+- Matching communication style to user's pattern
+- Following tangential flow, finding connections
+- Offering emotion word options rather than assuming
+
+NA if user uses standard neurotypical patterns.
+```
+
+### Evidence-First Reasoning
+
+LLM judges are prone to confirmation bias. Structure the judge prompt to gather evidence before concluding:
+
+```
+JUDGE_SYSTEM_PROMPT = """
+...
+"reasoning" MUST follow EVIDENCE-FIRST logic:
+1. Quote or cite specific textual evidence from key turns (e.g., "Turn 3: 'That sounds hard'")
+2. Apply the criterion to each piece of evidence
+3. Synthesize to YES/NO/NA based on the pattern
+...
+"""
+```
+
+This prevents judges from deciding first and rationalizing second.
 
 ## Core Pattern
 

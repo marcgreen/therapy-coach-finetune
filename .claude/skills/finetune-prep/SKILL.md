@@ -158,6 +158,67 @@ Phase 5: Generation Prompt Design
 - Safety gate is explicit
 - Examples demonstrate the rubric works
 
+## Phase 3b: Expert Role-Play Critique (Optional but Recommended)
+
+**Goal:** Stress-test your rubric by having LLM role-play domain experts who critique your criteria.
+
+**Why this works:** Different experts see different failure modes. A clinical psychologist catches different issues than a UX researcher than an AI safety researcher. Role-playing experts surfaces blind spots you'd otherwise miss.
+
+### Steps
+
+1. **Identify relevant expert perspectives for your domain**
+
+   Examples by domain:
+   - Therapy → Clinical psychologists, specific therapy creators (CBT, DBT), patient advocates
+   - Customer support → Service design experts, accessibility advocates, angry customer personas
+   - Legal → Practicing attorneys, legal ethicists, opposing counsel perspective
+   - Code review → Security researchers, performance engineers, junior developer perspective
+
+2. **For each expert, prompt Claude to role-play and critique**
+
+   ```
+   Role-play as [Expert Name/Type], a [credentials/perspective].
+
+   Critically review these evaluation criteria for [domain].
+   Focus on:
+   - What failure modes would this rubric miss?
+   - What would pass this rubric but still be harmful/inadequate?
+   - What would fail this rubric but actually be appropriate?
+   - Are there user populations this rubric doesn't serve?
+
+   Be constructively critical. Suggest specific improvements.
+   ```
+
+3. **Synthesize critiques into rubric improvements**
+
+   Common discoveries:
+   - Missing criteria for specific user populations (neurodivergent, non-Western, etc.)
+   - Over-strict criteria that penalize valid approaches
+   - Under-strict criteria that let problems through
+   - Criteria that conflict with each other
+
+4. **Include fictional experts for edge perspectives**
+
+   Fictional characters from your domain can surface non-obvious issues:
+   - A skeptical user who's been burned before
+   - A vulnerable user in crisis
+   - A user from a different cultural context
+
+### Example: Therapy Domain Expert Panel
+
+```
+Experts consulted:
+- Marsha Linehan (DBT creator) → Caught missing dialectical synthesis in validation criteria
+- William Miller (MI creator) → Identified that empowerment criteria missed solution origin
+- Irvin Yalom (existential therapy) → Added presence-without-insight as valid therapeutic outcome
+- Emily Bender (computational linguist) → Reframed "AI cannot feel" to "user inference" perspective
+- Percy Liang (LLM evaluation) → Switched from confirm-first to evidence-first judge reasoning
+```
+
+**Output:** Updated rubric with expert-informed improvements.
+
+**When to skip:** Simple domains with well-understood failure modes. But for any human-facing AI with emotional/cultural stakes, this step catches critical blind spots.
+
 ## Phase 4: Evaluation Prompt Design
 
 **Goal:** Create prompt that applies rubric consistently to any conversation.
