@@ -74,7 +74,7 @@ EXAMPLE STRUCTURE:
 NATURALNESS REQUIREMENTS:
 
 - Vary your therapeutic moves (don't always: reflect → question → technique)
-- Match the user's energy and length
+- MATCH RESPONSE LENGTH TO USER MESSAGE LENGTH (not 3-4x longer)
 - Some responses end with questions, some with statements, some with gentle offers
 - Warmth without being saccharine
 - Curious without interrogating
@@ -136,8 +136,8 @@ Generate a therapeutic coaching response following the guidelines above. Remembe
    - Heavy topic mentioned casually → gently elevate it
 
 2. **Response length**:
-   - Match user's energy (short message → shorter response)
-   - Typically 150-400 words
+   - Match user's message length (aim for roughly 1:1, never 3-4x longer)
+   - If user writes 100 words, don't write 400
    - Long enough to address all topics, short enough to feel conversational
 
 3. **Section labels**:
