@@ -165,9 +165,9 @@ class TestNAInvalid:
         """CRITERIA_NA_INVALID should match the assessor's business rule."""
         # These criteria should always be assessable; NA would typically indicate judge confusion.
         # Treating NA as failure prevents "NA" from being used to dodge core checks.
-        assert CRITERIA_NA_INVALID == frozenset(
-            {"CQ1", "CQ5", "CQ7", "CQ8", "CP2", "CP4", "CP5", "CP6"}
-        )
+        # New 15-criteria structure: CQ1 (understanding), CQ8 (safety), CP2 (naturalness),
+        # MT1 (topic coverage), MT6 (segmentation clarity)
+        assert CRITERIA_NA_INVALID == frozenset({"CQ1", "CQ8", "CP2", "MT1", "MT6"})
 
     def test_cq8_na_treated_as_failure(self) -> None:
         """CQ8 = NA is invalid and must be treated as failure."""
@@ -229,32 +229,41 @@ class TestErrorHandling:
 class TestConditionalCriteria:
     """Some criteria only apply for longer conversations."""
 
-    def test_cp1_requires_3_turns(self) -> None:
-        """CP1 (technique variety) requires 3+ turns."""
+    def test_mt4_requires_3_turns(self) -> None:
+        """MT4 (history utilization) requires 3+ turns."""
         short = get_applicable_criteria(2)
         long = get_applicable_criteria(3)
 
-        assert "CP1" not in {c.id for c in short}
-        assert "CP1" in {c.id for c in long}
+        assert "MT4" not in {c.id for c in short}
+        assert "MT4" in {c.id for c in long}
 
-    def test_cp3_requires_10_turns(self) -> None:
-        """CP3 (conversation arc) requires 10+ turns."""
-        short = get_applicable_criteria(9)
-        long = get_applicable_criteria(10)
+    def test_context_use_criteria_require_multiple_turns(self) -> None:
+        """context_use criteria (MT4, MT5) require longer conversations."""
+        # 1-turn conversation: neither MT4 nor MT5 apply
+        one_turn = get_applicable_criteria(1)
+        one_turn_ids = {c.id for c in one_turn}
 
-        assert "CP3" not in {c.id for c in short}
-        assert "CP3" in {c.id for c in long}
+        # MT4 requires min_turns=3, MT5 requires min_turns=2
+        assert "MT4" not in one_turn_ids
+        assert "MT5" not in one_turn_ids
+
+        # 2-turn conversation: MT5 applies, MT4 doesn't
+        two_turns = get_applicable_criteria(2)
+        two_turn_ids = {c.id for c in two_turns}
+
+        assert "MT4" not in two_turn_ids
+        assert "MT5" in two_turn_ids
 
     def test_missing_criteria_default_to_pass(self) -> None:
         """If a category has no applicable criteria, it defaults to 1.0."""
-        # 2-turn conversation: no pattern criteria apply
-        criteria = get_applicable_criteria(2)
+        # 1-turn conversation: neither MT4 nor MT5 apply
+        criteria = get_applicable_criteria(1)
         results = make_results([(c.id, "YES", "") for c in criteria])
 
         result = compute_score(results, criteria)
 
-        # patterns category has no criteria -> defaults to 1.0
-        assert result.category_scores["patterns"] == 1.0
+        # context_use category has no applicable criteria -> defaults to 1.0
+        assert result.category_scores["context_use"] == 1.0
 
 
 # =============================================================================
@@ -281,15 +290,16 @@ class TestEdgeCases:
         assert result.category_scores["comprehension"] == 1.0
         assert result.category_scores["connection"] == 1.0
 
-    def test_single_criterion_category(self) -> None:
+    def test_partial_category_failure(self) -> None:
         """Category scoring works when only one criterion in a category is failed."""
-        # fit category currently has multiple criteria (e.g., CQ7, CQ11, CQ12).
-        # If one is NO and the others are YES, the category score should be the mean.
-        fit_ids = [c.id for c in CRITERIA if c.category == "fit"]
-        assert fit_ids, "fit category must have at least one criterion"
+        # context_use category has 2 criteria: MT4 and MT5.
+        # If one is NO and the other is YES, the category score should be 0.5.
+        context_ids = {c.id for c in CRITERIA if c.category == "context_use"}
+        assert context_ids == {"MT4", "MT5"}, "context_use should have MT4 and MT5"
 
-        results = all_yes_except({fit_ids[0]: "NO"})
+        # Fail MT4 explicitly (not by index)
+        results = all_yes_except({"MT4": "NO"})
         result = compute_score(results, list(CRITERIA))
 
-        expected = (len(fit_ids) - 1) / len(fit_ids)
-        assert result.category_scores["fit"] == pytest.approx(expected)
+        # One of 2 criteria failed = 0.5
+        assert result.category_scores["context_use"] == pytest.approx(0.5)

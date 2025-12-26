@@ -11,7 +11,8 @@
       "WebFetch(domain:dspy.ai)",
       "WebFetch(domain:platform.openai.com)",
       "Bash(uv sync:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(wc:*)"
     ]
   }
 }

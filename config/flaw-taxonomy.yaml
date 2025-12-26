@@ -1,0 +1,276 @@
+# config/flaw-taxonomy.yaml
+# Human flaw patterns for realistic user simulation in therapeutic conversations
+#
+# These patterns inject realistic human messiness into synthetic conversations.
+# The user simulator samples from these to create authentic-feeling clients.
+#
+# Usage: Each persona gets 1-3 primary flaw patterns assigned.
+# Patterns manifest across the conversation, not every message.
+#
+# Weights within each category sum to 1.0 (probability distribution).
+
+flaw_taxonomy:
+  # ==========================================================================
+  # Communication Patterns: How users express (or fail to express) themselves
+  # ==========================================================================
+  communication:
+    - name: burying_the_lede
+      weight: 0.29
+      description: "Real issue mentioned last or casually, buried under safer topics"
+      examples:
+        - "Work's fine, sleep is okay... oh and I had a panic attack Thursday"
+        - "So yeah the weekend was good. Anyway my mom called and we got into it again"
+        - "Nothing major, just the usual. Oh, I did quit my job yesterday"
+      simulation_notes: |
+        Place the actual concern at the end of the message or mention it casually.
+        Start with mundane updates, save the heavy topic for last.
+        May need coach to notice and gently elevate the buried topic.
+
+    - name: rambling_tangential
+      weight: 0.21
+      description: "Drifts between topics without clear structure"
+      examples:
+        - "Starts with work stress, ends up talking about childhood"
+        - "I was going to talk about my boss but now I'm thinking about my dad"
+        - "Sorry, I'm all over the place today"
+      simulation_notes: |
+        Let the message flow stream-of-consciousness.
+        Topics connect associatively, not logically.
+        Coach should follow the thread without forcing structure.
+
+    - name: vague_underspecified
+      weight: 0.21
+      description: "Doesn't provide enough context, speaks in generalities"
+      examples:
+        - "Things have just been hard lately"
+        - "I don't know, it's just... everything"
+        - "People don't understand"
+      simulation_notes: |
+        Use general words: "things", "stuff", "everything", "people".
+        Coach may need to gently probe for specifics.
+        Don't over-explain when asked - give a bit more, not full detail.
+
+    - name: contradicting_self
+      weight: 0.14
+      description: "Says opposite things across different exchanges"
+      examples:
+        - "Exchange 3: 'I don't care what she thinks' → Exchange 7: 'Her opinion devastates me'"
+        - "Earlier: 'I'm fine with being single' → Later: 'I'm so lonely'"
+      simulation_notes: |
+        This is realistic ambivalence, not error.
+        Don't contradict within same message - spread across exchanges.
+        Coach should notice and gently explore the contradiction.
+
+    - name: intellectualizing
+      weight: 0.15
+      description: "Analyzes feelings instead of feeling them, uses distance"
+      examples:
+        - "I suppose theoretically I might feel some anxiety"
+        - "Logically I know this is grief, so..."
+        - "It's interesting that I react this way"
+      simulation_notes: |
+        Use analytical language: "theoretically", "logically", "interesting".
+        Keep emotions at arm's length.
+        Coach should gently invite feeling, not analysis.
+
+  # ==========================================================================
+  # Resistance Patterns: How users avoid depth or deflect help
+  # ==========================================================================
+  resistance:
+    - name: yes_but
+      weight: 0.25
+      description: "Rejects suggestions while appearing to engage"
+      examples:
+        - "That's a good idea but it won't work because..."
+        - "I've tried that and it didn't help"
+        - "Sure, but you don't understand my situation"
+      simulation_notes: |
+        Acknowledge the suggestion, then immediately dismiss it.
+        Find reasons why advice won't work for "my specific case".
+        Coach should explore what's underneath the resistance.
+
+    - name: deflecting_with_humor
+      weight: 0.19
+      description: "Uses jokes to avoid depth when conversation gets too real"
+      examples:
+        - "Haha anyway enough about my existential crisis"
+        - "But who needs therapy when you have wine, right? Kidding... mostly"
+        - "Wow that got dark fast, let's talk about something else"
+      simulation_notes: |
+        Deploy humor when approaching vulnerable territory.
+        Joke signals discomfort, not that the topic isn't important.
+        Coach should acknowledge the humor and gently return.
+
+    - name: minimizing
+      weight: 0.25
+      description: "Downplays severity of their experience"
+      examples:
+        - "It's not that bad, other people have real problems"
+        - "I shouldn't complain, I'm lucky compared to..."
+        - "I'm probably overreacting"
+      simulation_notes: |
+        Compare self unfavorably to imagined others.
+        Dismiss own pain as invalid or undeserving of attention.
+        Coach should validate without arguing.
+
+    - name: testing_boundaries
+      weight: 0.12
+      description: "Pushes to see how assistant responds to edge requests"
+      examples:
+        - "So what do you think I have? Anxiety disorder?"
+        - "Should I just take more of my medication?"
+        - "Can you just tell me what to do?"
+      simulation_notes: |
+        Ask for diagnoses, medication advice, or directive commands.
+        Coach should hold boundaries warmly, redirect to appropriate support.
+        Not hostile, just testing limits.
+
+    - name: seeking_reassurance
+      weight: 0.19
+      description: "Wants to be told it's fine rather than exploring"
+      examples:
+        - "I'm not being unreasonable, right?"
+        - "That's normal though, isn't it?"
+        - "You don't think I'm crazy for feeling this way?"
+      simulation_notes: |
+        Frame questions to invite agreement, not exploration.
+        Seeking validation, not insight.
+        Coach should validate the feeling while inviting curiosity.
+
+  # ==========================================================================
+  # Memory/Consistency Issues: How context gets distorted over time
+  # ==========================================================================
+  memory:
+    - name: forgetting_prior_insight
+      weight: 0.35
+      description: "Returns to old pattern despite earlier realization"
+      examples:
+        - "Had breakthrough about boundaries in exchange 5, ignores it in exchange 12"
+        - "Realized pattern last session, back to same behavior today"
+      simulation_notes: |
+        Insight doesn't stick immediately - this is realistic.
+        Coach can gently reference prior realization.
+        Growth is non-linear.
+
+    - name: rewriting_history
+      weight: 0.30
+      description: "Remembers past events or statements differently"
+      examples:
+        - "'I never said I was angry at her' (they did, in exchange 3)"
+        - "Remembers conversation as more hostile than it was"
+      simulation_notes: |
+        Memory is reconstructive, not playback.
+        Coach shouldn't accuse, but can gently offer alternate recollection.
+        Current emotional state colors memory.
+
+    - name: mood_dependent_recall
+      weight: 0.35
+      description: "Current mood colors memory of past"
+      examples:
+        - "When down: 'Nothing has ever worked'"
+        - "When anxious: 'This always happens to me'"
+        - "When better: 'I don't know why I was so upset before'"
+      simulation_notes: |
+        Overgeneralize based on current feeling.
+        Coach can acknowledge current state while offering perspective.
+
+  # ==========================================================================
+  # Emotional Patterns: Cognitive distortions and emotional dynamics
+  # ==========================================================================
+  emotional:
+    - name: catastrophizing
+      weight: 0.25
+      description: "Everything is worst-case, disaster thinking"
+      examples:
+        - "If I fail this, my career is over"
+        - "She's going to leave me and I'll die alone"
+        - "This is going to ruin everything"
+      simulation_notes: |
+        Jump to extreme negative outcomes.
+        Use absolute language: "everything", "never", "always", "ruined".
+        Coach validates fear without endorsing catastrophe.
+
+    - name: black_and_white_thinking
+      weight: 0.20
+      description: "No nuance, all-or-nothing perspective"
+      examples:
+        - "She either loves me completely or hates me"
+        - "Either I succeed perfectly or I'm a total failure"
+        - "If he cared at all, he would have called"
+      simulation_notes: |
+        Use binary framing: "either/or", "completely/not at all".
+        Coach gently introduces gray areas.
+
+    - name: emotional_flooding
+      weight: 0.20
+      description: "Overwhelmed, can't process, spiraling"
+      examples:
+        - "Long message that spirals without clear ask"
+        - "I don't even know where to start, it's all too much"
+        - "Everything is hitting at once and I can't breathe"
+      simulation_notes: |
+        Message may be disorganized, jumping between concerns.
+        Coach should help ground and slow down, not add more.
+
+    - name: flat_affect
+      weight: 0.15
+      description: "Describes heavy things without apparent emotion"
+      examples:
+        - "My dad died. Anyway, about work..."
+        - "Yeah the divorce was finalized. So what were we talking about?"
+        - "I got fired yesterday. It's whatever."
+      simulation_notes: |
+        State significant events matter-of-factly.
+        May be dissociation, avoidance, or processing style.
+        Coach should notice but not force emotional display.
+
+    - name: projection
+      weight: 0.10
+      description: "Attributes own feelings or motives to others"
+      examples:
+        - "He's probably judging me" (when user is self-critical)
+        - "She must be so disappointed in me" (assumption without evidence)
+        - "Everyone thinks I'm incompetent"
+      simulation_notes: |
+        Assume others feel what user feels about self.
+        Coach can gently explore evidence vs assumption.
+
+    - name: rumination
+      weight: 0.10
+      description: "Stuck in loops, returning to same thoughts"
+      examples:
+        - "I keep thinking about what I should have said"
+        - "I can't stop replaying it in my head"
+        - "Every night I go over it again and again"
+      simulation_notes: |
+        Return to same topic/thought even after discussing it.
+        Coach should acknowledge the loop, not just redirect.
+
+# ==========================================================================
+# Persona Configuration
+# ==========================================================================
+#
+# When generating a persona, assign:
+# - 1 primary flaw pattern (weight 0.6 - appears frequently)
+# - 1-2 secondary flaw patterns (weight 0.3 - appears occasionally)
+# - Allow any pattern to emerge naturally (weight 0.1 - rare moments)
+#
+# Distribution across categories for a persona:
+# - 1 from communication OR emotional (how they express)
+# - 1 from resistance OR memory (how they engage with help/history)
+
+persona_config:
+  # Half of users have no significant flaw patterns (clear communicators)
+  no_flaw_probability: 0.50  # 50% of personas have no assigned flaws
+
+  # For users WITH flaw patterns - how many patterns to assign:
+  flaw_assignment:
+    primary_count: 1       # Exactly 1 primary pattern (always)
+    secondary_count: [1, 2]  # 1-2 secondary patterns (random choice)
+
+  # How often each pattern level manifests in user messages:
+  # (These are per-message probabilities, not weights for sampling)
+  manifestation_frequency:
+    primary: 0.6           # Primary pattern appears in ~60% of messages
+    secondary: 0.15        # Each secondary pattern appears in ~15% of messages
+    emergent: 0.1          # Any unassigned pattern can emerge rarely

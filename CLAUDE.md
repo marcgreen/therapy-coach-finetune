@@ -10,7 +10,7 @@ Fine-tuning a **privacy-first, locally-runnable therapeutic coaching model** (7B
 
 **Approach:**
 - Generate synthetic multi-turn conversations using DSPy/GEPA optimization
-- Evaluate with conversation-level rubric (12 criteria, safety gate)
+- Evaluate with conversation-level rubric (15 criteria: 13 weighted + 2 safety gate)
 - SFT fine-tuning on filtered high-quality data
 - Export to GGUF for local inference
 

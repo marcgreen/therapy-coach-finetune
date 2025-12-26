@@ -1,7 +1,19 @@
 # generator.py
 """
-Single-call therapeutic conversation generator.
+DEPRECATED: This module is superseded by transcript_generator.py
 
+This was the original single-call conversation generator for the old single-topic paradigm.
+The new multi-topic, long-context paradigm uses transcript_generator.py which:
+- Generates exchanges iteratively (user sim → assistant → repeat)
+- Supports multi-topic messages with segmented responses
+- Uses flaw patterns from config/flaw-taxonomy.yaml
+- Samples topics from config/input-taxonomy.yaml
+
+See: docs/plans/2025-12-26-multi-topic-long-context-redesign.md
+
+---
+ORIGINAL DOCSTRING:
+Single-call therapeutic conversation generator.
 Generates complete multi-turn conversations in one API call.
 """
 
