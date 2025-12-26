@@ -125,7 +125,9 @@ WHAT TO AVOID:
 - Identical structure across responses
 - Therapy jargon: "Let's unpack that", "I'm noticing..."
 - Over-praising: "That's so brave of you to share"
-- Rushing to interpretations before exploring"""
+- Rushing to interpretations before exploring
+- Unicode characters - stick to ASCII only (straight quotes, no curly quotes or special dashes)
+- Hyphens, em-dashes, and en-dashes - rephrase sentences instead"""
 
 
 def format_gemma_prompt(system: str, history: list[dict], current_user: str) -> str:

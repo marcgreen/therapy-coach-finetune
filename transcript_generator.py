@@ -69,6 +69,11 @@ WRITING_STYLES = [
 ]
 
 
+# Trajectory types - emotional arc across the conversation
+TRAJECTORIES = ["volatile", "improving", "deteriorating", "stable"]
+TRAJECTORY_WEIGHTS = [0.66, 0.11, 0.11, 0.12]  # volatile most common
+
+
 @dataclass
 class Persona:
     """A user persona for transcript generation."""
@@ -81,6 +86,7 @@ class Persona:
     writing_style: str  # How they write: formal, casual, text-speak, etc.
     topic_seeds: list[TopicSeed]
     flaw_patterns: list[dict[str, str]] | None  # None = clear communicator
+    trajectory: str  # volatile, improving, deteriorating, stable
     seed: int  # Random seed used to generate this persona
 
     def to_dict(self) -> dict:
@@ -102,6 +108,7 @@ class Persona:
                 for t in self.topic_seeds
             ],
             "flaw_patterns": self.flaw_patterns,
+            "trajectory": self.trajectory,
             "seed": self.seed,
         }
 
@@ -545,6 +552,9 @@ def generate_persona(
     # Flaw patterns (or None for clear communicator)
     flaw_patterns = sample_flaw_patterns(config, rng=rng)
 
+    # Trajectory (emotional arc across conversation)
+    trajectory = rng.choices(TRAJECTORIES, weights=TRAJECTORY_WEIGHTS, k=1)[0]
+
     persona_id = f"persona_{seed:04d}"
 
     return Persona(
@@ -556,6 +566,7 @@ def generate_persona(
         writing_style=writing_style,
         topic_seeds=topic_seeds,
         flaw_patterns=flaw_patterns,
+        trajectory=trajectory,
         seed=seed,
     )
 
@@ -587,6 +598,7 @@ def format_persona_for_prompt(persona: Persona) -> str:
         f"Age range: {persona.age_range}",
         f"Personality: {', '.join(persona.personality_traits)}",
         f"Communication style: {persona.communication_style}",
+        f"Trajectory: {persona.trajectory}",
         "",
         "Topic seeds (things on your mind):",
     ]
