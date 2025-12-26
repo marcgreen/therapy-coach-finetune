@@ -57,11 +57,16 @@ SIMULATION GUIDELINES:
      - minimizing: "It's not that bad, others have it worse"
      - vague_underspecified: "Things have just been hard"
 
-4. MESSAGE LENGTH
+4. MESSAGE LENGTH & WRITING STYLE
    - Vary your length: some messages are 2 sentences, some are 3 paragraphs
-   - Aim for 100-400 words typically, but occasionally shorter or longer
-   - Don't always fill every message with content
-   - Sometimes you trail off or don't finish thoughts
+   - Aim for 50-300 words typically
+   - Match your persona's education/age:
+     - Some people write at high school level, short sentences, simple words
+     - Some use text shorthand: "idk", "tbh", "ngl", "rn", lowercase, no punctuation
+     - Some are verbose and articulate
+     - Some ramble, some are terse
+   - Don't write like a grad student unless your persona would
+   - Avoid therapy jargon like "processing", "boundaries", "triggered" unless you'd naturally use it
 
 5. TOPIC EVOLUTION
    - Return to topics from earlier in the conversation

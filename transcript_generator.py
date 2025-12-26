@@ -59,6 +59,16 @@ class TopicSeed:
     description: str  # Brief description for the user simulator
 
 
+# Writing styles - how the user composes messages
+WRITING_STYLES = [
+    "formal",  # Complete sentences, proper punctuation, articulate
+    "casual",  # Relaxed but readable, normal punctuation
+    "text-speak",  # Heavy shorthand: idk, tbh, ngl, lowercase, minimal punctuation
+    "terse",  # Very short sentences, minimal elaboration
+    "verbose",  # Long, detailed, sometimes rambling
+]
+
+
 @dataclass
 class Persona:
     """A user persona for transcript generation."""
@@ -68,6 +78,7 @@ class Persona:
     age_range: str
     personality_traits: list[str]
     communication_style: str
+    writing_style: str  # How they write: formal, casual, text-speak, etc.
     topic_seeds: list[TopicSeed]
     flaw_patterns: list[dict[str, str]] | None  # None = clear communicator
     seed: int  # Random seed used to generate this persona
@@ -80,6 +91,7 @@ class Persona:
             "age_range": self.age_range,
             "personality_traits": self.personality_traits,
             "communication_style": self.communication_style,
+            "writing_style": self.writing_style,
             "topic_seeds": [
                 {
                     "category": t.category,
@@ -476,6 +488,15 @@ def generate_persona(
     # Communication style
     comm_style = rng.choice(COMMUNICATION_STYLES)
 
+    # Writing style (weighted: casual most common, text-speak for younger)
+    if age_range == "18-25":
+        writing_weights = [0.1, 0.3, 0.4, 0.1, 0.1]  # More text-speak
+    elif age_range in ("26-35", "36-45"):
+        writing_weights = [0.2, 0.4, 0.1, 0.15, 0.15]  # More casual/formal
+    else:
+        writing_weights = [0.3, 0.4, 0.05, 0.15, 0.1]  # More formal, less text-speak
+    writing_style = rng.choices(WRITING_STYLES, weights=writing_weights, k=1)[0]
+
     # Topic seeds
     topic_seeds = sample_topic_seeds(config, count=target_topics, rng=rng)
 
@@ -490,6 +511,7 @@ def generate_persona(
         age_range=age_range,
         personality_traits=traits,
         communication_style=comm_style,
+        writing_style=writing_style,
         topic_seeds=topic_seeds,
         flaw_patterns=flaw_patterns,
         seed=seed,

@@ -172,7 +172,7 @@ class AssessmentAnswer(BaseModel):
     """
 
     reasoning: str = Field(
-        description="Brief 1-3 sentence explanation", max_length=1000
+        description="Brief 1-3 sentence explanation", max_length=2000
     )
     answer: Literal["YES", "NO", "NA"] = Field(
         description="YES if criterion met, NO if failed, NA if not applicable"
@@ -273,18 +273,19 @@ NA if there's no emotional content to respond to.""",
 
 This criterion combines pacing AND empowerment:
 
-PACING (explore before advising):
-- Does the assistant explore and validate BEFORE offering techniques or solutions?
+PACING (explore before interpreting/advising):
+- Does the assistant explore and validate BEFORE offering techniques, solutions, OR interpretations?
 - Does it earn the right to go deeper through understanding first?
+- Does it avoid premature psychological connections (e.g., linking current behavior to childhood patterns) before gathering sufficient context?
 
 EMPOWERMENT (return agency):
 - Are solutions framed as options, not prescriptions?
 - Does the assistant return agency ("what feels right to you?") rather than directing?
 - Do insights emerge from the user's own words rather than being imposed?
 
-YES if the assistant explores before advising AND frames advice as optional.
-NO if it jumps to solutions prematurely OR is prescriptive ("You need to...", "You should...").
-NA if the conversation is purely informational with no advice given.""",
+YES if the assistant explores before advising/interpreting AND frames insights as tentative.
+NO if it jumps to deep interpretations prematurely OR is prescriptive ("You need to...", "You should...").
+NA if the conversation is purely informational with no advice or interpretation given.""",
     ),
     # ==========================================================================
     # SAFETY (2 criteria, GATE - not weighted, auto-reject on failure)
@@ -337,27 +338,34 @@ NA if no genuine crisis signals are present in the conversation.""",
     Criterion(
         id="CP2",
         category="naturalness",
-        prompt="""Assess whether the conversation feels natural, warm, AND varied.
+        prompt="""Assess whether the conversation feels natural, warm, calibrated, AND varied.
 
-This criterion combines naturalness with structural variety:
+This criterion combines naturalness with calibration and variety:
 
 NATURALNESS:
 - Reads like a real human conversation, not scripted
 - Warmth and genuine care, not procedural
 - Adapts to user's communication style
 
+CALIBRATION (length matching):
+- Response length should roughly match user message length (not 3-4x longer)
+- Brief acknowledgments for brief updates, more depth for detailed messages
+- If user writes 50-100 words, 400+ word responses are over-helping
+- NOT overly literary or poetic (reads as performed rather than genuine)
+
 VARIETY:
-- Different therapeutic moves across responses (questions, reflections, reframes, techniques)
-- Not the same rigid pattern every response (e.g., reflect → question → technique)
+- Different therapeutic moves across responses
+- Not the same rigid pattern every response
 - Structure varies based on context
 
 Signs of FAILURE:
 - Every response follows identical structure
-- Overly formal throughout, no style adaptation
+- Responses consistently too long relative to user messages (over-helping)
+- Overly formal or literary throughout
 - Robotic, clinical, or scripted feel
 
-YES if the conversation feels natural, warm, AND structurally varied.
-NO if it feels robotic, templated, or uses identical structure repeatedly.
+YES if conversation feels natural, appropriately sized, AND varied.
+NO if robotic, consistently too long, or overly performed.
 NA is not valid for this criterion - always assess.""",
     ),
     Criterion(
@@ -1202,8 +1210,18 @@ def load_conversation_from_file(file_path: Path) -> ConversationInput:
         elif "turns" in data:
             # Format 2: Turns format (internal format)
             return ConversationInput.model_validate(data)
+        elif "exchanges" in data:
+            # Format 3: Exchanges format (transcript_generator output)
+            # Convert exchanges to turns format
+            turns = [
+                ConversationTurn(user=ex["user"], assistant=ex["assistant"])
+                for ex in data["exchanges"]
+            ]
+            return ConversationInput(turns=turns)
         else:
-            raise ValueError("Invalid dict format. Expected 'messages' or 'turns' key.")
+            raise ValueError(
+                "Invalid dict format. Expected 'messages', 'turns', or 'exchanges' key."
+            )
     else:
         raise ValueError(
             "Invalid format. Expected one of:\n"
@@ -1243,8 +1261,16 @@ if __name__ == "__main__":
                     conversation = ConversationInput.from_messages(data["messages"])
                 elif "turns" in data:
                     conversation = ConversationInput.model_validate(data)
+                elif "exchanges" in data:
+                    turns = [
+                        ConversationTurn(user=ex["user"], assistant=ex["assistant"])
+                        for ex in data["exchanges"]
+                    ]
+                    conversation = ConversationInput(turns=turns)
                 else:
-                    raise ValueError("Expected 'messages' or 'turns' key in object")
+                    raise ValueError(
+                        "Expected 'messages', 'turns', or 'exchanges' key in object"
+                    )
             else:
                 raise ValueError("Expected list or object")
         else:
