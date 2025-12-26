@@ -71,6 +71,15 @@ We explicitly train on examples with substantial prior history. Each training ex
 
 The model learns: given this history + this message → produce this response.
 
+### Supervision scope (training objective)
+
+We **ensure every assistant message in the included history is high-quality and acceptable to supervise**. This allows standard SFT training over all assistant turns in the training JSON without loss masking.
+
+### Leakage-safe splitting + transcript-level filtering (MVP-critical)
+
+- **Split by transcript/persona first**, then slice within each split. This prevents evaluation leakage from overlapping histories/personas across many slices.
+- **Filter at transcript level first**: assess the full transcript as one continuous conversation and only keep passing transcripts for slicing. This prevents one bad assistant turn from contaminating many derived examples.
+
 ### Example Length Distribution (Selective)
 
 | Length | % | Examples | Avg tokens |
@@ -322,21 +331,34 @@ def ask_claude(prompt: str, system: str | None = None) -> str:
 ### Phase 3: Assessment
 
 - [ ] Rewrite `assessor.py` — New criteria, Claude backend
-- [ ] Test: Assess the generated transcript
-- [ ] Validate rubric catches expected issues
+- [ ] Test: Assess the generated transcript (full transcript as one conversation)
+- [ ] Validate rubric catches expected issues (especially MT1/MT6 and MT4/MT5)
+
+### Minimum segmentation standard (for reliable MT judging)
+
+To make MT judging reliable without extra topic-tracking infrastructure, every assistant response to a multi-topic user message MUST:
+
+- **By default, start directly with the first topic section**.
+- **Optional acknowledgment opener**: at most **0–1 grounded sentence** *only if it adds value*. These should be **uncommon** (aim well under ~25% of responses), since repeated validation openers are penalized by CP4. Avoid stock “That sounds hard” openers.
+- **Use explicit per-topic sections** (2–4) with short labels in the user’s language
+- Provide **2–6 sentences** per topic section (reflect specifics when needed, then one helpful move: clarify, normalize, reframe, offer an option, or propose a small next step)
+- Optionally add **one “Woven connection” line** only when two topics clearly interact
+
+This is intentionally minimal: it anchors MT1/MT6 for the judge while avoiding excessive/formulaic validation (see CP4).
 
 ### Phase 4: Pilot
 
 - [ ] Generate 3 transcripts (1 short, 1 medium, 1 long)
-- [ ] Assess all, review results
-- [ ] Iterate on prompts/rubric as needed
+- [ ] Assess each full transcript, review results
+- [ ] Keep only passing transcripts for slicing
+- [ ] Iterate on prompts/rubric as needed (MVP: prompts first)
 
 ### Phase 5: Scale
 
 - [ ] Generate full transcript set (~100 transcripts)
-- [ ] Slice into ~2K training examples
-- [ ] Filter at 0.80 threshold
-- [ ] Create train/eval split (90/10)
+- [ ] Assess full transcripts; keep only passing transcripts
+- [ ] Create train/eval split (90/10) **by transcript/persona**
+- [ ] Slice within each split into ~2K training examples
 
 ### Phase 6: Training
 
@@ -361,6 +383,7 @@ def ask_claude(prompt: str, system: str | None = None) -> str:
 1. **Token limit per exchange**: Should we cap user/assistant message lengths during generation?
 2. **Time gap simulation**: How to represent "days later" in the transcript?
 3. **Topic resolution**: How do we signal when a topic has been "resolved" vs. dormant?
+4. **Segmentation format**: Are per-topic section labels plain text (“Work: …”) or markdown headers? (Either is fine; consistency matters for judging.)
 
 These can be resolved during implementation.
 

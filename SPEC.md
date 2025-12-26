@@ -88,6 +88,19 @@ One continuous conversation:
 
 Responses are typically **segmented** (addressing each topic with clear structure) with **woven** elements when topics connect.
 
+#### Minimum segmentation standard (for reliable judging + training)
+
+To make multi-topic handling reliably judgeable (MT1/MT2/MT3/MT6) without heavy topic-tracking infrastructure, every assistant response to a multi-topic user message MUST:
+
+- **By default, start directly with the first topic section**.
+- **Optional acknowledgment opener**: at most **0–1 grounded sentence** *only if it adds value*. These should be **uncommon** (aim well under ~25% of responses), since repeated validation openers are penalized by the rubric. Avoid stock phrases like “That sounds hard.”
+- **Use explicit per-topic sections** (2–4), each with:
+  - **A short label** naming the topic in the user's language (e.g., “Work stress”, “Your relationship”, “Sleep”)
+  - **2–6 sentences** of topic-specific content (briefly reflect/confirm specifics *when needed*, then make one helpful move: clarify, normalize, reframe, offer an option, or propose a small next step)
+- **Optionally include one “Woven connection” line** only if two topics clearly interact.
+
+This is intentionally minimal: it gives the judge clear anchors for “topic coverage” and “segmentation clarity” while avoiding excessive or formulaic validation.
+
 ---
 
 ## Therapeutic Approach
@@ -127,6 +140,16 @@ Responses are typically **segmented** (addressing each topic with clear structur
 ### Long-Context Training Approach
 
 We explicitly train on examples with substantial prior history. Each training example includes conversation history so the model learns to reference and utilize context.
+
+#### Supervision scope (training objective)
+
+We **ensure every assistant message in the included history is high-quality and acceptable to supervise**. This allows standard SFT training over all assistant turns without loss masking.
+
+#### Leakage-safe splitting and filtering (MVP-critical)
+
+- **Split first by transcript/persona**, then slice within each split. This prevents evaluation leakage from overlapping histories and repeated personas.
+- **Filter at transcript level first**: assess the full transcript as one continuous conversation and only keep **passing transcripts** for slicing. This prevents a single bad assistant turn from contaminating many derived slices.
+- Optional (later): additional slice-level filtering for fine-grained quality control.
 
 **Training data format:**
 ```json
@@ -472,15 +495,22 @@ def ask_claude(prompt: str, system: str | None = None) -> str:
                               |
                               v
 ┌─────────────────────────────────────────────────────────────┐
-│  STEP 4: Assess Examples                                    │
-│  For each example:                                          │
+│  STEP 4: Assess Transcripts (MVP gate)                       │
+│  For each full transcript:                                  │
 │  • Run through updated rubric (safety gate + weighted)      │
-│  • Filter at 0.80 threshold                                 │
+│  • Keep only passing transcripts                            │
 └─────────────────────────────────────────────────────────────┘
                               |
                               v
 ┌─────────────────────────────────────────────────────────────┐
-│  STEP 5: Train                                              │
+│  STEP 5: Split then Slice                                   │
+│  • Split by transcript/persona (train/eval)                 │
+│  • Slice within split into training examples                │
+└─────────────────────────────────────────────────────────────┘
+                              |
+                              v
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 6: Train                                              │
 │  • QLoRA fine-tuning on Gemma 3 12B                         │
 │  • Export to GGUF for local inference                       │
 └─────────────────────────────────────────────────────────────┘
@@ -686,5 +716,5 @@ uv run pytest tests/test_assessor.py -v
 
 ---
 
-*Last updated: December 2024*
+*Last updated: December 2025*
 *Redesigned for multi-topic, long-context conversations*
