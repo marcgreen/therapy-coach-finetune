@@ -45,6 +45,24 @@ uv run ruff format .           # Format
 uv run ty check .              # Type check
 ```
 
+## Local Model (Gemma 3 12B)
+
+**Model location:** `~/models/gemma-3-12b-it-q4_0.gguf` (7.5GB)
+
+**Start llama-server:**
+```bash
+llama-server -m ~/models/gemma-3-12b-it-q4_0.gguf --port 8080 -ngl 99
+```
+
+- `-ngl 99`: Offload all layers to GPU (Apple Silicon)
+- Server runs on `http://localhost:8080`
+- Used by `run_base_model_eval.py` for base model evaluation
+
+**Test the server:**
+```bash
+curl http://localhost:8080/health
+```
+
 ## Dependencies
 
 **Always pin exact versions with `==`, never use `>=`.**
