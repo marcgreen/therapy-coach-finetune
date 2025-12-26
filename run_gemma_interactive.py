@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from llm_backend import ClaudeCLIBackend
 from transcript_generator import (
@@ -145,22 +146,28 @@ def format_gemma_prompt(system: str, history: list[dict], current_user: str) -> 
     return "".join(parts)
 
 
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=2, min=5, max=60))
+def _gemma_request(prompt: str, max_tokens: int) -> str:
+    """Make request to Gemma with retries."""
+    response = httpx.post(
+        f"{LLAMA_SERVER_URL}/completion",
+        json={
+            "prompt": prompt,
+            "n_predict": max_tokens,
+            "stop": ["<end_of_turn>", "<start_of_turn>"],
+            "temperature": 0.7,
+        },
+        timeout=300.0,
+    )
+    response.raise_for_status()
+    result = response.json()
+    return result.get("content", "").strip()
+
+
 def get_gemma_response(prompt: str, max_tokens: int = 600) -> str:
     """Get response from Gemma via llama-server."""
     try:
-        response = httpx.post(
-            f"{LLAMA_SERVER_URL}/completion",
-            json={
-                "prompt": prompt,
-                "n_predict": max_tokens,
-                "stop": ["<end_of_turn>", "<start_of_turn>"],
-                "temperature": 0.7,
-            },
-            timeout=120.0,
-        )
-        response.raise_for_status()
-        result = response.json()
-        return result.get("content", "").strip()
+        return _gemma_request(prompt, max_tokens)
     except Exception as e:
         return f"[ERROR: {e}]"
 
