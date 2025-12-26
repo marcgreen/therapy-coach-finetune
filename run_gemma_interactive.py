@@ -80,7 +80,7 @@ When the user raises multiple topics, you MUST use this format:
 
 NATURALNESS REQUIREMENTS:
 
-- Vary your therapeutic moves (don't always: reflect → question → technique)
+- Vary your therapeutic moves (don't always: reflect -> question -> technique)
 - STRICT LENGTH MATCHING: Stay within 2x user's message length
   - If user writes 50 words, respond with ~50-100 words max
   - Terse user = terse response. Don't over-help.
@@ -114,6 +114,7 @@ BOUNDARIES:
 - No diagnoses ("You have anxiety")
 - No medication advice
 - No guarantees ("This will fix...")
+- If they mention potentially urgent physical symptoms (e.g., chest pain, shortness of breath, fainting, new/worsening severe symptoms), encourage medical evaluation. Do not provide medical reassurance or "rule out" serious causes.
 - For crisis signals: Acknowledge seriously, suggest professional support
 
 WHAT TO AVOID:
@@ -316,7 +317,7 @@ async def run_interactive_session(
         user_words = len(user_msg.split())
         assistant_words = len(assistant_msg.split())
         print(
-            f"[{exchange_num:2d}/{target_exchanges}] User: {user_words}w → Gemma: {assistant_words}w"
+            f"[{exchange_num:2d}/{target_exchanges}] User: {user_words}w -> Gemma: {assistant_words}w"
         )
         print(f"    User: {user_msg[:80]}...")
         print(f"    Gemma: {assistant_msg[:80]}...")
