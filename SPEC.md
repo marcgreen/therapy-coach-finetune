@@ -511,7 +511,7 @@ def ask_claude(prompt: str, system: str | None = None) -> str:
                               v
 ┌─────────────────────────────────────────────────────────────┐
 │  STEP 6: Train                                              │
-│  • QLoRA fine-tuning on Gemma 3 12B                         │
+│  • QLoRA fine-tuning on Gemma 3 12B (via Hugging Face `hf-llm-trainer` SKILL) │
 │  • Export to GGUF for local inference                       │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -585,7 +585,7 @@ Generalized Claude Code skills for end-to-end fine-tuning on any domain:
 | **domain-knowledge-extractor** | Extract frameworks, taxonomies, rubrics from domain expertise | Yes — any domain |
 | **base-model-evaluator** | Evaluate candidate models against rubric, decide fine-tune/not | Yes — any rubric |
 | **synthetic-data-generator** | Generate training data with persona simulation + flaw injection | Yes — configurable personas/flaws |
-| **training-orchestrator** | QLoRA fine-tuning, adapter merge, GGUF export | Yes — any HF model |
+| **training-orchestrator** | QLoRA fine-tuning (Hugging Face `hf-llm-trainer` SKILL), adapter merge, GGUF export | Yes — any HF model |
 | **model-comparator** | Statistical comparison of base vs fine-tuned | Yes — any evaluation set |
 
 **Skill structure:**
@@ -599,6 +599,14 @@ Generalized Claude Code skills for end-to-end fine-tuning on any domain:
 **Why this matters:** These skills make fine-tuning accessible. Anyone can adapt them to their domain (coding assistants, legal, medical Q&A, etc.) by swapping the taxonomy and rubric.
 
 ---
+
+## Stretch Goals: Preference Optimization + RL
+
+These are explicitly **out of MVP scope** and only attempted after SFT is working end-to-end.
+
+- **DPO (Direct Preference Optimization)**: generate preference pairs (chosen/rejected) from the rubric, then run DPO training to refine quality beyond SFT.
+- **GRPO (Group Relative Policy Optimization)**: use the rubric as a reward function for online optimization when infrastructure/compute permits.
+- **RL (general)**: explore reinforcement-style refinement only if it yields measurable rubric gains without regressions (especially safety).
 
 ## Weekend Execution Plan
 
