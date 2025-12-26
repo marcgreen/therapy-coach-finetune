@@ -79,20 +79,29 @@ curl http://localhost:8080/health
 
 **Why:** Reproducible builds. Everyone gets the same versions. No surprise breakage from upstream updates.
 
-## Code Quality: Write It Right the First Time
+## Code Quality: Check Early, Check Often
 
-**Pre-commit hooks run ruff and ty on every commit.** Write code that passes these checks without needing fixes.
+**Pre-commit hooks run ruff and ty on every commit.** Don't wait for commit time to discover issues.
 
-During development:
-- Run `uv run ruff check . && uv run ty check .` before considering code complete
-- Fix issues as you write, not in a separate pass
-- If ty complains about types, add the annotation - don't ignore it
+**Run checks after writing or editing files:**
+```bash
+uv run ruff check . && uv run ty check .
+```
+
+**When to run checks:**
+- After creating a new file
+- After making significant edits to a file
+- Before running a script for the first time
+- Before considering code complete
+
+**Why check early:** Catching type errors or lint issues at commit time means re-editing files and re-committing. Check after writing to fix issues immediately.
 
 Common mistakes to avoid upfront:
 - Missing return type annotations
 - Using `Dict`/`List` instead of `dict`/`list`
 - Unused imports
 - Unhandled `None` from optional returns
+- Accessing dict keys with `.attribute` instead of `["key"]`
 
 ## Python Guidelines
 
