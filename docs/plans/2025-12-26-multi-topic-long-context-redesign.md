@@ -378,14 +378,14 @@ This is intentionally minimal: it anchors MT1/MT6 for the judge while avoiding e
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Token limit per exchange**: Should we cap user/assistant message lengths during generation?
-2. **Time gap simulation**: How to represent "days later" in the transcript?
-3. **Topic resolution**: How do we signal when a topic has been "resolved" vs. dormant?
-4. **Segmentation format**: Are per-topic section labels plain text (“Work: …”) or markdown headers? (Either is fine; consistency matters for judging.)
-
-These can be resolved during implementation.
+| Question | Resolution |
+|----------|------------|
+| **Token limit per exchange** | Cap at ~800 tokens user, ~600 tokens assistant. Ensures variety, prevents runaway generation. |
+| **Time gap simulation** | No explicit separators. Time between messages is implicit/unknown — more realistic. The user just picks up where they left off. |
+| **Topic resolution** | Don't explicitly signal. Let topics naturally fade or get revisited based on user behavior. More realistic than formal "resolved" states. |
+| **Segmentation format** | Plain text labels with bold: `**Work stress:** ...`. Simpler than markdown headers, trains on common format. |
 
 ---
 
