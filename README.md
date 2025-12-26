@@ -2,22 +2,43 @@
 
 Fine-tuning a **privacy-first, locally-runnable therapeutic coaching model** (project spec in `SPEC.md`).
 
-### What’s implemented in this repo today
+### What's implemented
 
-- **Evaluation rubric**: `reference/evaluation-rubric.md` (turn-level CP*/CN*/US*/FT*/SF* + conversation-level CV1–CV6)
-- **Therapeutic framework reference**: `reference/therapeutic-frameworks.md` (9 approaches + techniques + failure modes)
-- **Parallel evaluator**: `eval/parallel_evaluator.py` (LLM-as-judge using OpenAI Responses API)
+**Core pipeline:**
+- **Transcript generator**: `transcript_generator.py` — generates multi-topic conversations via user simulation loop
+- **Assessor**: `assessor.py` — LLM-as-judge evaluation (15 criteria: 13 weighted + 2 safety gate) using Claude CLI
+- **LLM backend**: `llm_backend.py` — abstraction layer supporting OpenAI API and Claude CLI
 
-### What’s not implemented yet (planned)
+**Reference materials:**
+- `reference/assessment-rubric.md` — 15-criterion rubric for conversation quality
+- `reference/therapeutic-frameworks.md` — 9 therapeutic approaches + techniques + failure modes
 
-- Data generation scripts / pipeline outputs (`config/`, `data/`, training/export automation)
+**Config:**
+- `config/input-taxonomy.yaml` — topic seeds for generation
+- `config/flaw-taxonomy.yaml` — flaw patterns for realistic user simulation
+- `config/system-prompt.md` — system prompt for the fine-tuned model
+- `config/prompts/` — prompts for assessor, assistant, and user simulator
+
+**Scripts:**
+- `run_base_model_eval.py` — run base model evaluation with llama-server
+- `run_gemma_interactive.py` — interactive chat with Gemma
+- `assess_base_model.py` — assess base model responses
+
+**Output data (in `output/`):**
+- Base model responses and assessments
+- Evaluation scenarios and style examples
+
+### What's not implemented yet
+
+- SFT training pipeline
+- GGUF export automation
 
 ### Quick start
 
 Prereqs:
 - Python 3.12+
 - `uv`
-- `OPENAI_API_KEY` in your environment (the evaluator calls the OpenAI API)
+- Claude CLI installed (for assessment and generation)
 
 Install:
 
@@ -25,11 +46,25 @@ Install:
 uv sync
 ```
 
-Run a single-turn evaluation:
+Generate transcripts:
 
 ```bash
-uv run python eval/parallel_evaluator.py "user message here" "assistant response here"
+uv run python transcript_generator.py --count 1 --output data/raw/transcripts
 ```
 
-For multi-turn conversation evaluation, import and call `assess_full_conversation()` from `eval/parallel_evaluator.py`.
+Assess a conversation:
 
+```python
+from assessor import assess_conversation, ConversationInput, ConversationTurn
+
+conversation = ConversationInput(turns=[
+    ConversationTurn(role="user", content="..."),
+    ConversationTurn(role="assistant", content="..."),
+])
+result = await assess_conversation(conversation)
+print(f"Score: {result.score:.2f}, Passed: {result.passed}")
+```
+
+### Local model (Gemma 3 12B)
+
+See `CLAUDE.md` for llama-server setup instructions.
