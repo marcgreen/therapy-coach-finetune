@@ -198,8 +198,14 @@ async def generate_user_message(
             "personality_traits": persona.personality_traits,
             "communication_style": persona.communication_style,
             "writing_style": persona.writing_style,
+            "trajectory": persona.trajectory,
             "topic_seeds": [
-                {"category": t.category, "subtopic": t.subtopic}
+                {
+                    "category": t.category,
+                    "subtopic": t.subtopic,
+                    "complexity": t.complexity,
+                    "description": t.description,
+                }
                 for t in persona.topic_seeds
             ],
         },
@@ -265,11 +271,13 @@ async def run_interactive_session(
             "writing_style": persona.writing_style,
             "personality_traits": persona.personality_traits,
             "communication_style": persona.communication_style,
+            "trajectory": persona.trajectory,
             "topic_seeds": [
                 {
                     "category": t.category,
                     "subtopic": t.subtopic,
                     "complexity": t.complexity,
+                    "description": t.description,
                 }
                 for t in persona.topic_seeds
             ],

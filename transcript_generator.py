@@ -598,6 +598,7 @@ def format_persona_for_prompt(persona: Persona) -> str:
         f"Age range: {persona.age_range}",
         f"Personality: {', '.join(persona.personality_traits)}",
         f"Communication style: {persona.communication_style}",
+        f"Writing style: {persona.writing_style}",
         f"Trajectory: {persona.trajectory}",
         "",
         "Topic seeds (things on your mind):",
