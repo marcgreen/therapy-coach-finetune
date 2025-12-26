@@ -37,14 +37,32 @@ load_dotenv()
 class TaxonomyConfig:
     """Parsed taxonomy configuration."""
 
+    # What they're discussing
     topic: str
     subtopic: str
-    style: str
     difficulty: str
-    target_turns: int
+
+    # How they communicate
+    style: str
     interaction_cadence: str  # frequent_short or infrequent_detailed
-    help_seeking: str  # explicit or implicit
     cognitive_patterns: str  # balanced or distorted
+
+    # Who they are
+    age_context: str  # young_adult, middle_adult, older_adult, teenager
+    cultural_framing: str  # individualist, collectivist, mixed
+    communication_pattern: (
+        str  # neurotypical, direct_literal, tangential_energetic, limited_vocabulary
+    )
+
+    # Their relationship to help
+    help_seeking: str  # explicit or implicit
+    help_relationship: str  # naive, experienced, skeptical, dependent, testing
+
+    # How the problem presents
+    presentation: str  # clean_single, comorbid, somatic, decoy, spiraling
+    temporality: str  # acute, chronic, triggered, building
+
+    target_turns: int
 
 
 def load_taxonomy(path: Path = Path("config/input-taxonomy.yaml")) -> dict:
@@ -59,35 +77,38 @@ def weighted_choice(items: list[dict], weight_key: str = "weight") -> dict:
     return random.choices(items, weights=weights, k=1)[0]
 
 
+def _sample_weighted(options: dict[str, float]) -> str:
+    """Sample a key from a dict of {key: weight}."""
+    return random.choices(list(options.keys()), weights=list(options.values()), k=1)[0]
+
+
 def sample_config(taxonomy: dict) -> TaxonomyConfig:
     """Sample a conversation configuration from taxonomy."""
-    topic_entry = weighted_choice(taxonomy["taxonomy"]["topics"])
+    tax = taxonomy["taxonomy"]
+
+    # What they're discussing
+    topic_entry = weighted_choice(tax["topics"])
     topic = topic_entry["name"]
     subtopic = random.choice(topic_entry["subtopics"])
+    difficulty = _sample_weighted(tax["difficulty"])
 
-    styles = taxonomy["taxonomy"]["styles"]
-    style = random.choices(list(styles.keys()), weights=list(styles.values()), k=1)[0]
+    # How they communicate
+    style = _sample_weighted(tax["styles"])
+    cadence = _sample_weighted(tax["interaction_cadence"])
+    cognitive_patterns = _sample_weighted(tax["cognitive_patterns"])
 
-    difficulties = taxonomy["taxonomy"]["difficulty"]
-    difficulty = random.choices(
-        list(difficulties.keys()), weights=list(difficulties.values()), k=1
-    )[0]
+    # Who they are
+    age_context = _sample_weighted(tax["age_context"])
+    cultural_framing = _sample_weighted(tax["cultural_framing"])
+    communication_pattern = _sample_weighted(tax["communication_pattern"])
 
-    # Sample interaction cadence and help-seeking behavior
-    cadences = taxonomy["taxonomy"]["interaction_cadence"]
-    cadence = random.choices(
-        list(cadences.keys()), weights=list(cadences.values()), k=1
-    )[0]
+    # Their relationship to help
+    help_seeking = _sample_weighted(tax["help_seeking"])
+    help_relationship = _sample_weighted(tax["help_relationship"])
 
-    help_seeking_opts = taxonomy["taxonomy"]["help_seeking"]
-    help_seeking = random.choices(
-        list(help_seeking_opts.keys()), weights=list(help_seeking_opts.values()), k=1
-    )[0]
-
-    cognitive_opts = taxonomy["taxonomy"]["cognitive_patterns"]
-    cognitive_patterns = random.choices(
-        list(cognitive_opts.keys()), weights=list(cognitive_opts.values()), k=1
-    )[0]
+    # How the problem presents
+    presentation = _sample_weighted(tax["presentation"])
+    temporality = _sample_weighted(tax["temporality"])
 
     # Turn count depends on interaction cadence
     turn_range = taxonomy["turn_ranges"][cadence]
@@ -96,12 +117,18 @@ def sample_config(taxonomy: dict) -> TaxonomyConfig:
     return TaxonomyConfig(
         topic=topic,
         subtopic=subtopic,
-        style=style,
         difficulty=difficulty,
-        target_turns=target_turns,
+        style=style,
         interaction_cadence=cadence,
-        help_seeking=help_seeking,
         cognitive_patterns=cognitive_patterns,
+        age_context=age_context,
+        cultural_framing=cultural_framing,
+        communication_pattern=communication_pattern,
+        help_seeking=help_seeking,
+        help_relationship=help_relationship,
+        presentation=presentation,
+        temporality=temporality,
+        target_turns=target_turns,
     )
 
 
@@ -131,55 +158,92 @@ class GeneratedConversation(BaseModel):
 
 GENERATION_PROMPT = """Generate a realistic {turns}-turn therapeutic coaching conversation.
 
-SCENARIO:
-- Topic: {topic} ({subtopic})
-- Client communication style: {style}
-- Complexity: {difficulty}
-- Interaction cadence: {cadence}
-- Help-seeking style: {help_seeking}
-- Cognitive patterns: {cognitive_patterns}
+=== SCENARIO ===
+Topic: {topic} ({subtopic})
+Complexity: {difficulty}
 
-CLIENT STYLES:
-- terse: Short messages, few words
-- conversational: Natural, flowing
-- detailed: Provides full context
-- emotional: Expresses intense feelings
-- analytical: Notices patterns, systematic
+=== WHO THE CLIENT IS ===
+Age context: {age_context}
+Cultural framing: {cultural_framing}
+Communication pattern: {communication_pattern}
 
-INTERACTION CADENCE:
-- frequent_short: Quick back-and-forth, short messages on both sides
-- infrequent_detailed: Client sends one long, detailed message (like a journal entry). Coach responds with equally substantial reflection and guidance. Few turns but each is meaty.
+AGE CONTEXTS:
+- young_adult (18-25): Identity formation, career start, first independence. Language: casual, uncertain about life direction.
+- middle_adult (26-50): Career/family responsibilities, midlife questions. Language: practical, time-pressured.
+- older_adult (50+): Health concerns, legacy, loss, transitions. Language: reflective, may reference past.
+- teenager (13-17): School, identity, family dynamics. Language: informal, may be guarded or dramatic.
 
-HELP-SEEKING STYLE:
-- explicit: Client directly asks questions ("What should I do?", "Can you help?")
-- implicit: Client expresses feelings and experiences without asking questions. They're implicitly looking for guidance but don't request it. Coach offers perspective and gentle suggestions naturally.
+CULTURAL FRAMING:
+- individualist: Frames issues as personal ("I feel", "I want"). Focus on self-growth and boundaries.
+- collectivist: Frames issues relationally ("My family expects", "I can't disappoint them"). Duty, shame, obligation matter.
+- mixed: Navigating between cultural expectations. Tension between "what I want" and "what's expected."
+
+COMMUNICATION PATTERNS:
+- neurotypical: Standard conversational patterns, reads subtext, emotional inference.
+- direct_literal: Autistic-pattern. Direct, literal, prefers explicit communication. May miss implied meaning. Don't assume they're "cold" - they're precise.
+- tangential_energetic: ADHD-pattern. Topic-jumping, high energy, may interrupt self mid-thought, circles back. Follow their energy, don't force linear structure.
+- limited_vocabulary: Struggles to articulate emotions. Uses "bad", "weird", "off" for many feelings. Coach should help name emotions without putting words in their mouth.
+
+=== HOW THEY COMMUNICATE ===
+Style: {style}
+Cadence: {cadence}
+Help-seeking: {help_seeking}
+
+STYLES: terse (few words), conversational (natural flow), detailed (full context), emotional (intense feelings), analytical (notices patterns)
+
+CADENCE:
+- frequent_short: Quick back-and-forth, short messages both sides
+- infrequent_detailed: Journal-entry style, substantial messages, few turns
+
+HELP-SEEKING:
+- explicit: Directly asks "What should I do?"
+- implicit: Expresses experience, expects guidance without asking
+
+=== RELATIONSHIP TO HELP ===
+Help relationship: {help_relationship}
+
+- naive: First time seeking help. Doesn't know what to expect. May need more explanation of process.
+- experienced: Knows therapeutic language. May have expectations or compare to past therapy.
+- skeptical: Doubts it will work. "My partner made me try this." Coach should acknowledge skepticism, not argue.
+- dependent: Seeks excessive reassurance. Coach should gently return agency, not feed dependency.
+- testing: Pushes boundaries, checks if coach will break guidelines. Coach should hold boundaries warmly.
+
+=== PROBLEM PRESENTATION ===
+Presentation: {presentation}
+Temporality: {temporality}
+Cognitive patterns: {cognitive_patterns}
+
+PRESENTATION:
+- clean_single: One clear issue, straightforward
+- comorbid: Multiple issues intertwined (e.g., anxiety + relationship + work). Let them bleed together naturally.
+- somatic: Physical symptoms masking emotional. "My chest hurts", "I can't sleep." Coach should explore gently without diagnosing.
+- decoy: Surface problem hides real issue. Client starts with safe topic, real concern emerges mid-conversation.
+- spiraling: Jumps between concerns, hard to focus. Coach should help organize without dismissing.
+
+TEMPORALITY:
+- acute: Just happened, high distress. Needs grounding before exploration.
+- chronic: Longstanding pattern. "I've always been this way."
+- triggered: Recent event activated old wound.
+- building: Escalating across conversation, getting more distressed as they talk.
 
 COGNITIVE PATTERNS:
-- balanced: Client has realistic perspective even when distressed. Emotions are proportionate to situation.
-- distorted: Client shows cognitive distortions that coach should NOT validate:
-  * Catastrophizing: "Everything is ruined", "I'll never recover"
-  * All-or-nothing: "If I can't do it perfectly, why try at all"
-  * Mind-reading: "They all think I'm incompetent"
-  * Overgeneralization: "I always fail", "Nothing ever works"
-  * Self-defeating conclusions: "I should just give up"
-  Coach should acknowledge the FEELING without endorsing the distorted CONCLUSION.
-  Bad: "You're right, it does seem hopeless" (yes-bot)
-  Good: "I hear how exhausted you are. What's making it feel like there's no way forward?"
+- balanced: Realistic perspective, even if distressed
+- distorted: Catastrophizing, all-or-nothing, mind-reading. Coach validates FEELING, not CONCLUSION.
 
-COACH GUIDELINES:
-- Match message length to client's cadence
-- Skip formulaic validation ("That sounds hard", "I hear you"). Just respond naturally.
-- Ask questions sparingly - often guidance is more helpful than another question
-- Return agency to the client
-- Warm and natural, not clinical
-- If client isn't asking questions, don't bombard them with questions either
+=== COACH GUIDELINES ===
+- Match the client's communication pattern. Don't force neurotypical norms on direct_literal clients.
+- Respect cultural framing. Don't push individualist values on collectivist clients.
+- Skip formulaic validation ("That sounds hard"). Just respond naturally.
+- Ask questions sparingly - guidance often helps more than another question.
+- Return agency. They decide what's right for them.
+- If they're testing, hold boundaries warmly without being defensive.
 
-CONVERSATION ARC:
-- Early: Client shares what's on their mind
-- Middle: Deeper understanding, gentle insights
-- Late: Small realizations, concrete next steps
+=== CONVERSATION ARC ===
+Early: Client shares what's on their mind
+Middle: Deeper understanding, gentle insights
+Late: Small realizations, concrete next steps (unless temporality is "building" - then end with grounding)
 
-Generate a natural, human conversation. Avoid AI tells like constant validation or ending every response with a question."""
+Generate a natural, human conversation. Avoid AI tells."""
 
 
 _api_retry = retry(
@@ -200,11 +264,17 @@ async def generate_conversation(
         turns=config.target_turns,
         topic=config.topic,
         subtopic=config.subtopic,
-        style=config.style,
         difficulty=config.difficulty,
+        style=config.style,
         cadence=config.interaction_cadence,
-        help_seeking=config.help_seeking,
         cognitive_patterns=config.cognitive_patterns,
+        age_context=config.age_context,
+        cultural_framing=config.cultural_framing,
+        communication_pattern=config.communication_pattern,
+        help_seeking=config.help_seeking,
+        help_relationship=config.help_relationship,
+        presentation=config.presentation,
+        temporality=config.temporality,
     )
 
     user_msg: EasyInputMessageParam = {"role": "user", "content": prompt}
@@ -282,13 +352,25 @@ async def generate_batch(
                 "id": f"conv_{index:05d}",
                 "messages": conversation.to_messages(),
                 "metadata": {
+                    # What
                     "topic": config.topic,
                     "subtopic": config.subtopic,
-                    "style": config.style,
                     "difficulty": config.difficulty,
+                    # How
+                    "style": config.style,
                     "interaction_cadence": config.interaction_cadence,
-                    "help_seeking": config.help_seeking,
                     "cognitive_patterns": config.cognitive_patterns,
+                    # Who
+                    "age_context": config.age_context,
+                    "cultural_framing": config.cultural_framing,
+                    "communication_pattern": config.communication_pattern,
+                    # Relationship
+                    "help_seeking": config.help_seeking,
+                    "help_relationship": config.help_relationship,
+                    # Presentation
+                    "presentation": config.presentation,
+                    "temporality": config.temporality,
+                    # Stats
                     "turns": len(conversation.turns),
                 },
             }

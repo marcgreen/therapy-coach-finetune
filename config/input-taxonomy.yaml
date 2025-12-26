@@ -1,6 +1,13 @@
 # config/input-taxonomy.yaml
 # Input distribution for synthetic therapeutic coaching conversations
 # Weights must sum to 1.0 within each category
+#
+# Diversity dimensions:
+# - WHAT: topics, subtopics, difficulty
+# - HOW: styles, interaction_cadence, cognitive_patterns
+# - WHO: demographics (age, culture, communication)
+# - RELATIONSHIP: help_seeking, help_relationship
+# - PRESENTATION: problem presentation, temporality
 
 taxonomy:
   topics:
@@ -93,6 +100,61 @@ taxonomy:
   cognitive_patterns:
     balanced: 0.85           # Realistic perspective, even if distressed
     distorted: 0.15          # Catastrophizing, all-or-nothing, mind-reading, overgeneralization
+
+  # ==========================================================================
+  # WHO: Demographics and identity factors
+  # ==========================================================================
+
+  # Age context affects language, concerns, and life stage
+  age_context:
+    young_adult: 0.30        # 18-25: identity formation, career start, first independence
+    middle_adult: 0.45       # 26-50: career/family peak, responsibilities, midlife questions
+    older_adult: 0.15        # 50+: transitions, health, legacy, wisdom, loss
+    teenager: 0.10           # 13-17: developmental, school, identity, family dynamics
+
+  # Cultural framing of problems and help-seeking
+  cultural_framing:
+    individualist: 0.55      # "I feel", "I want", personal growth focus
+    collectivist: 0.25       # "My family expects", duty, shame, honor, obligation
+    mixed: 0.20              # Bicultural tension, navigating multiple value systems
+
+  # Communication patterns (includes neurodivergent styles)
+  communication_pattern:
+    neurotypical: 0.65       # Standard conversational patterns
+    direct_literal: 0.15     # Autistic-pattern: direct, literal, may miss subtext
+    tangential_energetic: 0.10  # ADHD-pattern: topic-jumping, high energy, interrupts self
+    limited_vocabulary: 0.10 # Struggles to articulate emotions, uses "bad" for many feelings
+
+  # ==========================================================================
+  # RELATIONSHIP: How user relates to getting help
+  # ==========================================================================
+
+  # Prior experience with therapy/coaching
+  help_relationship:
+    naive: 0.25              # First time seeking help, doesn't know what to expect
+    experienced: 0.35        # Knows therapeutic language, may have expectations
+    skeptical: 0.15          # Doubts it will work, "my partner made me try this"
+    dependent: 0.10          # Overly reliant on external validation, seeks reassurance
+    testing: 0.15            # Pushing boundaries, checking if coach will break guidelines
+
+  # ==========================================================================
+  # PRESENTATION: How the problem shows up
+  # ==========================================================================
+
+  # Problem presentation complexity
+  presentation:
+    clean_single: 0.40       # One clear issue, straightforward
+    comorbid: 0.25           # Multiple issues intertwined (anxiety + depression + relationship)
+    somatic: 0.10            # Physical symptoms masking emotional ("my chest hurts all the time")
+    decoy: 0.10              # Surface problem hides real issue (states work, real issue is abuse)
+    spiraling: 0.15          # Multiple topics, hard to focus, jumps between concerns
+
+  # Temporal quality of the issue
+  temporality:
+    acute: 0.20              # Just happened, high distress, needs grounding first
+    chronic: 0.40            # Longstanding pattern, "I've always been this way"
+    triggered: 0.20          # Recent event activated old wound or pattern
+    building: 0.20           # Escalating across conversation, getting more distressed
 
 # Turn ranges for length categories (used with frequent_short cadence)
 turn_ranges:
