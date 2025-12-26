@@ -166,7 +166,7 @@ class TestNAInvalid:
         # These criteria should always be assessable; NA would typically indicate judge confusion.
         # Treating NA as failure prevents "NA" from being used to dodge core checks.
         assert CRITERIA_NA_INVALID == frozenset(
-            {"CQ1", "CQ5", "CQ7", "CQ8", "CP2", "CP4", "CP5"}
+            {"CQ1", "CQ5", "CQ7", "CQ8", "CP2", "CP4", "CP5", "CP6"}
         )
 
     def test_cq8_na_treated_as_failure(self) -> None:
@@ -282,8 +282,14 @@ class TestEdgeCases:
         assert result.category_scores["connection"] == 1.0
 
     def test_single_criterion_category(self) -> None:
-        """Categories with one criterion (fit) work correctly."""
-        results = all_yes_except({"CQ7": "NO"})  # CQ7 is sole fit criterion
+        """Category scoring works when only one criterion in a category is failed."""
+        # fit category currently has multiple criteria (e.g., CQ7, CQ11, CQ12).
+        # If one is NO and the others are YES, the category score should be the mean.
+        fit_ids = [c.id for c in CRITERIA if c.category == "fit"]
+        assert fit_ids, "fit category must have at least one criterion"
+
+        results = all_yes_except({fit_ids[0]: "NO"})
         result = compute_score(results, list(CRITERIA))
 
-        assert result.category_scores["fit"] == 0.0
+        expected = (len(fit_ids) - 1) / len(fit_ids)
+        assert result.category_scores["fit"] == pytest.approx(expected)
