@@ -1,5 +1,5 @@
 """
-Conversation-level LLM-as-judge assessment using OpenAI Responses API.
+Conversation-level LLM-as-judge assessment using Claude CLI.
 
 Evaluates multi-topic, long-context conversations with 15 criteria:
 - 13 weighted criteria across 5 categories (comprehension, connection, naturalness, multi_topic, context_use)
@@ -17,19 +17,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Literal
 
-from dotenv import load_dotenv
-from openai import AsyncOpenAI, APIError, APITimeoutError, RateLimitError
-from openai.types.responses import EasyInputMessageParam
 from pydantic import BaseModel, Field
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_random_exponential,
-    retry_if_exception_type,
-)
 
-# Load environment variables from .env file
-load_dotenv()
+from llm_backend import ClaudeCLIBackend, LLMBackend
 
 # =============================================================================
 # Logging Configuration
@@ -51,26 +41,24 @@ def setup_logging(level: int = logging.INFO) -> None:
 
 
 # =============================================================================
-# Module-level OpenAI Client Singleton
+# Module-level LLM Backend Singleton
 # =============================================================================
 
-_client: AsyncOpenAI | None = None
-_client_api_key: str | None = None
+_backend: LLMBackend | None = None
 
 
-def get_client(api_key: str | None = None) -> AsyncOpenAI:
-    """Get or create the module-level AsyncOpenAI client singleton.
+def get_backend(model: str = "opus") -> LLMBackend:
+    """Get or create the module-level LLM backend singleton.
 
-    The client is recreated if a different api_key is provided.
+    Uses Claude CLI with the specified model (default: opus for quality).
     """
-    global _client, _client_api_key
+    global _backend
 
-    if api_key != _client_api_key or _client is None:
-        logger.debug("Creating new AsyncOpenAI client")
-        _client = AsyncOpenAI(api_key=api_key)
-        _client_api_key = api_key
+    if _backend is None:
+        logger.debug(f"Creating new Claude CLI backend with model: {model}")
+        _backend = ClaudeCLIBackend(model=model)
 
-    return _client
+    return _backend
 
 
 # =============================================================================
@@ -183,7 +171,9 @@ class AssessmentAnswer(BaseModel):
     Field order matters: reasoning before answer (think-then-decide).
     """
 
-    reasoning: str = Field(description="Brief 1-2 sentence explanation", max_length=300)
+    reasoning: str = Field(
+        description="Brief 1-3 sentence explanation", max_length=1000
+    )
     answer: Literal["YES", "NO", "NA"] = Field(
         description="YES if criterion met, NO if failed, NA if not applicable"
     )
@@ -649,22 +639,12 @@ def format_conversation(conversation: ConversationInput) -> str:
     return "\n".join(formatted)
 
 
-@retry(
-    stop=stop_after_attempt(5),
-    wait=wait_random_exponential(
-        multiplier=1, max=30
-    ),  # Full jitter to avoid thundering herd
-    retry=retry_if_exception_type((APIError, APITimeoutError, RateLimitError)),
-)
 async def assess_criterion(
-    client: AsyncOpenAI,
+    backend: LLMBackend,
     criterion: Criterion,
     conversation: ConversationInput,
 ) -> tuple[str, CriterionAnswer, str]:
-    """Assess a single criterion against the full conversation.
-
-    Rate limiting is handled by tenacity retry on 429 errors.
-    """
+    """Assess a single criterion against the full conversation."""
     formatted = format_conversation(conversation)
 
     system_prompt = (
@@ -673,26 +653,17 @@ async def assess_criterion(
         f"Category: {criterion.category}\n\n"
         f"{criterion.prompt}"
     )
-    system_msg: EasyInputMessageParam = {"role": "system", "content": system_prompt}
-    user_msg: EasyInputMessageParam = {
-        "role": "user",
-        "content": f"Assess the conversation below.\n\n{formatted}\n\nReturn the JSON now.",
-    }
+    user_prompt = (
+        f"Assess the conversation below.\n\n{formatted}\n\nReturn the JSON now."
+    )
 
     logger.debug(f"Assessing criterion {criterion.id}")
 
-    response = await client.responses.parse(
-        model="gpt-5-mini",
-        input=[system_msg, user_msg],
-        text_format=AssessmentAnswer,
-        reasoning={"effort": "medium"},
-        text={"verbosity": "low"},
-        max_output_tokens=1500,  # Needs headroom for reasoning + JSON on long convos
+    result = await backend.complete_structured(
+        prompt=user_prompt,
+        response_model=AssessmentAnswer,
+        system=system_prompt,
     )
-
-    result = response.output_parsed
-    if result is None:
-        raise ValueError(f"Failed to parse response for {criterion.id}")
 
     logger.debug(f"Criterion {criterion.id}: {result.answer}")
     return (criterion.id, result.answer, result.reasoning)
@@ -808,7 +779,6 @@ def compute_score(
 
 async def assess_conversation(
     conversation: ConversationInput,
-    api_key: str | None = None,
     require_min_turns: bool = True,
     conversation_id: str | None = None,
 ) -> AssessmentResult:
@@ -817,7 +787,6 @@ async def assess_conversation(
 
     Args:
         conversation: Validated conversation input
-        api_key: Optional OpenAI API key (defaults to env var)
         require_min_turns: If True, reject conversations below MIN_TURNS_FOR_ASSESSMENT
         conversation_id: Optional identifier for tracking and checkpointing
 
@@ -827,10 +796,6 @@ async def assess_conversation(
     Raises:
         ValueError: If conversation has fewer than MIN_TURNS_FOR_ASSESSMENT turns
                    (when require_min_turns=True)
-
-    Note:
-        Rate limiting is handled by tenacity retry with exponential backoff on 429 errors.
-        Concurrency is controlled by the semaphore in assess_batch().
     """
     turn_count = len(conversation.turns)
 
@@ -844,8 +809,8 @@ async def assess_conversation(
             f"to override (not recommended for training data)."
         )
 
-    # Use module-level singleton client
-    client = get_client(api_key)
+    # Use module-level singleton backend
+    backend = get_backend()
     applicable = get_applicable_criteria(turn_count)
 
     logger.info(
@@ -853,21 +818,19 @@ async def assess_conversation(
         f"({turn_count} turns, {len(applicable)} criteria)"
     )
 
-    # Run all assessments in parallel
-    tasks = [assess_criterion(client, c, conversation) for c in applicable]
+    # Run assessments in parallel (Claude CLI supports multiple instances)
+    tasks = [assess_criterion(backend, c, conversation) for c in applicable]
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Process results - errors become ERROR status, NOT NA
+    # Process results - errors become ERROR status
     results: list[tuple[str, CriterionAnswer, str]] = []
     for i, result in enumerate(raw_results):
         criterion = applicable[i]
         if isinstance(result, BaseException):
             error_msg = f"Assessment failed: {type(result).__name__}: {result}"
             logger.warning(f"Criterion {criterion.id} error: {error_msg}")
-            # Mark as ERROR - this will count as a failure, not a pass
             results.append((criterion.id, "ERROR", error_msg))
         else:
-            # result is tuple[str, CriterionAnswer, str]
             results.append(result)
 
     return compute_score(results, applicable, conversation_id)
@@ -1019,7 +982,6 @@ def append_checkpoint(
 async def assess_batch(
     conversations: list[tuple[str, ConversationInput]],
     checkpoint_path: Path | None = None,
-    api_key: str | None = None,
     concurrency: int = 10,
     progress_callback: ProgressCallback | None = None,
     log_interval: int = 10,
@@ -1031,8 +993,7 @@ async def assess_batch(
         conversations: List of (conversation_id, ConversationInput) tuples
         checkpoint_path: Path to checkpoint file for resume capability.
                         Results are appended as they complete.
-        api_key: Optional OpenAI API key
-        concurrency: Maximum concurrent assessments (default 10)
+        concurrency: Maximum concurrent assessments (default 10, but Claude CLI is sequential)
         progress_callback: Optional callback for progress updates
         log_interval: Log progress every N conversations
 
@@ -1104,7 +1065,6 @@ async def assess_batch(
             try:
                 result = await assess_conversation(
                     conversation,
-                    api_key=api_key,
                     conversation_id=conversation_id,
                 )
             except ValueError as e:

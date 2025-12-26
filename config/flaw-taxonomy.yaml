@@ -228,8 +228,8 @@ flaw_taxonomy:
       weight: 0.10
       description: "Attributes own feelings or motives to others"
       examples:
-        - "He's probably judging me" (when user is self-critical)
-        - "She must be so disappointed in me" (assumption without evidence)
+        - "He's probably judging me"  # when user is self-critical
+        - "She must be so disappointed in me"  # assumption without evidence
         - "Everyone thinks I'm incompetent"
       simulation_notes: |
         Assume others feel what user feels about self.

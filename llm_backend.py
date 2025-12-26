@@ -194,16 +194,23 @@ class ClaudeCLIBackend(LLMBackend):
     Structured output is handled by prompting for JSON and parsing.
     """
 
-    def __init__(self, timeout: int = 120, validate: bool = True):
+    def __init__(
+        self,
+        model: str = "opus",
+        timeout: int = 120,
+        validate: bool = True,
+    ):
         """Initialize Claude CLI backend.
 
         Args:
+            model: Model alias to use (e.g., "opus", "sonnet", "claude-opus-4-5-20251101")
             timeout: Timeout in seconds for CLI calls
             validate: If True, verify CLI is installed on init (default: True)
 
         Raises:
             RuntimeError: If validate=True and CLI is not available
         """
+        self._model = model
         self._timeout = timeout
 
         if validate:
@@ -230,7 +237,7 @@ class ClaudeCLIBackend(LLMBackend):
 
     @property
     def name(self) -> str:
-        return "Claude CLI"
+        return f"Claude CLI ({self._model})"
 
     async def complete(
         self,
@@ -239,9 +246,17 @@ class ClaudeCLIBackend(LLMBackend):
         max_tokens: int = 4096,  # noqa: ARG002 - CLI doesn't support this
     ) -> CompletionResult:
         """Generate completion using Claude CLI."""
-        cmd = ["claude", "-p", prompt, "--output-format", "json"]
+        cmd = [
+            "claude",
+            "-p",
+            prompt,
+            "--output-format",
+            "json",
+            "--model",
+            self._model,
+        ]
         if system:
-            cmd.extend(["--system", system])
+            cmd.extend(["--system-prompt", system])
 
         # Run in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
