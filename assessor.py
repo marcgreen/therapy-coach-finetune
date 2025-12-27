@@ -447,23 +447,29 @@ NA if conversation is too short to assess patterns.""",
 
 This criterion targets a common failure mode: the assistant sounds caring but does not help the user move forward.
 
-Look for two patterns across the transcript:
+Applicability (be strict):
+- Return NA unless the user is explicitly asking for help/action OR stuckness persists across multiple turns.
+- "Stuckness" means repeated looping language ("nothing changes", "I dont know what to do", "this isnt working",
+  "I keep doing the same thing", "I cant make myself do it") across >= 3 turns.
 
-1) MECHANISM WHEN STUCK:
-- When the user is looping, stuck, or repeatedly describing the same problem, does the assistant offer a brief
-  working model of why it might be happening, grounded in the user's words?
-- Good: simple loops (trigger -> thought -> body -> urge/avoidance -> short relief -> long cost), or a clear
-  "here's what seems to keep this going" summary.
-- Bad: repeated validation + reflective questions with no working model.
+When applicable, look for two things:
 
-2) ACTIONABLE NEXT STEP (EXPERIMENT):
-- When the user is stuck or asks "what do I do?", does the assistant propose ONE concrete next step framed as an experiment?
-- The step should be specific enough to try: what/when/how long (and ideally what to notice/track).
-- Bad: generic advice lists, or nothing but questions.
+1) MECHANISM (brief working model):
+- Does the assistant offer a 1-2 sentence working model grounded in the user's words?
+- Good: a simple maintaining loop (trigger -> thought -> body -> urge/avoidance -> short relief -> long cost),
+  or a clear "here's what seems to keep this going" summary.
+- Bad: only validation + questions across turns with no model of what's maintaining the pattern.
 
-YES if, when stuckness is present, the assistant repeatedly provides mechanism + one concrete experiment (not necessarily every turn).
-NO if the assistant repeatedly stays at reflection/questions without traction.
-NA if the user never appears stuck/looping and never asks for action.""",
+2) ACTIONABLE NEXT STEP (one experiment):
+- Does the assistant propose ONE concrete next step framed as an experiment (what/when/how long; optionally what to track)?
+- Good: specific enough to try before the next exchange.
+- Bad: vague encouragement, generic lists, or only more questions.
+
+Scoring:
+- YES if, when applicable, the assistant provides mechanism + at least one concrete experiment in response to the stuck loop,
+  and does so more than once across the transcript (not necessarily every turn).
+- NO if stuckness persists and the assistant repeatedly stays at reflection/questions with no mechanism and no experiment.
+- NA if not applicable.""",
         min_turns=2,
     ),
     # ==========================================================================
@@ -620,17 +626,29 @@ NA if no topics are revisited in the conversation.""",
 
 This is async coaching: users report what happened and what they tried on later days.
 
-When the assistant suggests an exercise/experiment/plan:
-- Does it check in later on whether the user tried it and what happened (even briefly)?
-- Does it iterate based on results (simplify, adjust, or change approach)?
+Evidence requirements (be strict):
 
-Also assess adaptiveness when a technique fails:
-- Bad: user says a technique didn't help, assistant repeats the same technique again (pattern across turns).
-- Good: assistant explores briefly why it didn't help and switches to a different category of approach.
+Follow-up on its own suggestion:
+- Only count as follow-up if the assistant explicitly references the prior suggestion AND asks what happened.
+  Examples:
+  - "Did you try X?"
+  - "Last time we talked about X. How did that go?"
+- Merely responding to user updates, or referencing history generally, is NOT enough.
 
-YES if the assistant generally follows up on its own suggested steps and adapts when things fail.
-NO if there is a repeated pattern of "new technique every turn" with no follow-up, OR repeating failed techniques.
-NA if the assistant never suggests any exercise/experiment/plan, or if there is no opportunity for follow-up.""",
+Iteration:
+- After follow-up, does the assistant adjust based on what happened?
+  - simplify, troubleshoot barrier, or pick a different tactic category
+
+Adaptiveness when a technique fails:
+- If the user says a specific technique did not help (e.g., "breathing did nothing", "that grounding felt silly"):
+  - NO if the assistant repeats the same technique again later as the main suggestion.
+  - YES if it switches approach category (body vs cognitive vs behavioral vs environmental) after a brief check.
+
+Scoring:
+- YES if there is at least one clear follow-up on a prior suggested experiment AND at least one instance of iteration/adaptation.
+- NO if the assistant suggests experiments but never follows up, OR repeatedly introduces new techniques without checking prior ones,
+  OR repeats a failed technique after the user reports it didn't help (pattern).
+- NA if the assistant never suggests any exercise/experiment/plan, or if there is no opportunity for follow-up.""",
         min_turns=3,
     ),
 )

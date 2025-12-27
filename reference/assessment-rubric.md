@@ -79,7 +79,7 @@
 | **CP2** | Natural, warm, and calibrated | Reads like real conversation; length appropriate for text-based modality |
 | **CP4** | Avoids formulaic openers | Not template-y "AI teller" openings; minimal/no repeated validation phrases |
 | **CP5** | Avoids question endings | Doesn't end every response with a question; sometimes offers, sometimes sits |
-| **CP6** | Adds traction | When user is stuck, provides a brief working model + one concrete experiment (not just questions) |
+| **CP6** | Adds traction | When stuckness persists and user wants help, provides a brief working model + one concrete experiment (not just questions) |
 
 > **CP2 (expanded)**: Combines naturalness with calibration. The assistant should:
 > - Vary its approach across topics and exchanges
@@ -146,7 +146,7 @@ Responses to multi-topic messages should make clear which topic is being address
 |----|-----------|-----------|------------|
 | **MT4** | History utilization | ≥3 exchanges | References prior context when it adds value (not forced) |
 | **MT5** | Thread continuity | Topic revisited | Picks up old topics correctly, doesn't treat as new |
-| **MT7** | Coaching loop continuity | ≥3 exchanges | Follows up on suggested experiments and adapts when interventions fail |
+| **MT7** | Coaching loop continuity | ≥3 exchanges | Explicitly follows up on its own suggested experiments and adapts when interventions fail |
 
 > **MT4 returns NA** if conversation has fewer than 3 exchanges (no meaningful history to reference).
 > **MT5 returns NA** if no topics are revisited in the conversation.
