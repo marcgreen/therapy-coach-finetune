@@ -363,15 +363,11 @@ NATURALNESS:
 - Warmth and genuine care, not procedural
 - Adapts to user's communication style
 
-CALIBRATION (length matching):
-- Response length should roughly match user message length (not 3-4x longer)
-- Brief acknowledgments for brief updates, more depth for detailed messages
-- If user writes 50-100 words, 400+ word responses are over-helping
+CALIBRATION (length matching) - USE THE PRE-COMPUTED STATS ABOVE:
+- The length statistics are provided above. Use those numbers, do not estimate.
+- If average ratio is under 1.5x AND fewer than 25% of turns exceed 2x, length is GOOD.
+- If average ratio is over 2x OR more than 50% of turns exceed 2x, length is BAD.
 - NOT overly literary or poetic (reads as performed rather than genuine)
-
-Be strict about systematic over-length:
-- If the assistant is consistently >2x the user's length for many turns (pattern, not one-off), score NO.
-- If the assistant repeatedly produces essay-like 200-400+ word replies to terse users, score NO.
 
 VARIETY:
 - Different therapeutic moves across responses
@@ -380,12 +376,12 @@ VARIETY:
 
 Signs of FAILURE:
 - Every response follows identical structure
-- Responses consistently too long relative to user messages (over-helping)
+- Length stats show systematic over-helping (see thresholds above)
 - Overly formal or literary throughout
 - Robotic, clinical, or scripted feel
 
-YES if conversation feels natural, appropriately sized, AND varied.
-NO if robotic, consistently too long, or overly performed.
+YES if conversation feels natural, appropriately sized (per stats), AND varied.
+NO if robotic, stats show over-length, or overly performed.
 NA is not valid for this criterion - always assess.""",
     ),
     Criterion(
@@ -680,6 +676,33 @@ def format_conversation(conversation: ConversationInput) -> str:
     return "\n".join(formatted)
 
 
+def compute_length_stats(conversation: ConversationInput) -> str:
+    """Compute deterministic length statistics for CP2 assessment."""
+    stats = []
+    ratios = []
+
+    for i, turn in enumerate(conversation.turns, 1):
+        user_words = len(turn.user.split())
+        asst_words = len(turn.assistant.split())
+        ratio = asst_words / user_words if user_words > 0 else 0
+        ratios.append(ratio)
+        stats.append(
+            f"Turn {i}: User={user_words}w, Asst={asst_words}w, Ratio={ratio:.2f}x"
+        )
+
+    avg_ratio = sum(ratios) / len(ratios) if ratios else 0
+    over_2x = sum(1 for r in ratios if r > 2.0)
+
+    summary = [
+        "LENGTH STATISTICS (pre-computed, use these facts):",
+        *stats,
+        f"Average ratio: {avg_ratio:.2f}x",
+        f"Turns where assistant > 2x user length: {over_2x}/{len(ratios)}",
+        "",
+    ]
+    return "\n".join(summary)
+
+
 async def assess_criterion(
     backend: LLMBackend,
     criterion: Criterion,
@@ -688,15 +711,18 @@ async def assess_criterion(
     """Assess a single criterion against the full conversation."""
     formatted = format_conversation(conversation)
 
+    # For CP2, inject pre-computed length statistics (LLMs can't count accurately)
+    extra_context = ""
+    if criterion.id == "CP2":
+        extra_context = compute_length_stats(conversation) + "\n"
+
     system_prompt = (
         f"{JUDGE_SYSTEM_PROMPT}\n\n"
         f"Criterion ID: {criterion.id}\n"
         f"Category: {criterion.category}\n\n"
         f"{criterion.prompt}"
     )
-    user_prompt = (
-        f"Assess the conversation below.\n\n{formatted}\n\nReturn the JSON now."
-    )
+    user_prompt = f"{extra_context}Assess the conversation below.\n\n{formatted}\n\nReturn the JSON now."
 
     logger.debug(f"Assessing criterion {criterion.id}")
 
