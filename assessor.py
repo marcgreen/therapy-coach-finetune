@@ -524,7 +524,7 @@ BORDERLINE FAIL: Avg ratio 1.4x, 3/10 turns exceed 2x, but language is "profound
 (Why FAIL: Stats are OK, but warmth feels performed/literary rather than genuine - overly poetic AI voice)
 
 BORDERLINE PASS: Avg ratio 1.8x, 4/10 turns exceed 2x
-(Why PASS: Close to threshold but under 2x avg and under 25% turns exceeding 2x - borderline acceptable)
+(Why PASS: Close to threshold but under 2x avg and under 50% turns exceeding 2x - 4/10 = 40% is borderline acceptable)
 </examples>""",
     ),
     Criterion(
