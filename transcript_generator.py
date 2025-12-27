@@ -722,8 +722,12 @@ async def generate_transcript(
     config: GeneratorConfig,
     persona: Persona,
     target_exchanges: int = 15,
+    output_dir: Path | None = None,
 ) -> Transcript:
-    """Generate a complete transcript."""
+    """Generate a complete transcript with progressive saving.
+
+    If output_dir is provided, saves after each exchange for crash recovery.
+    """
     exchanges: list[Exchange] = []
     transcript_id = (
         f"transcript_{persona.seed:04d}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -734,6 +738,12 @@ async def generate_transcript(
         f"({target_exchanges} exchanges, "
         f"{'no flaws' if persona.flaw_patterns is None else f'{len(persona.flaw_patterns)} flaws'})"
     )
+
+    # Set up progressive save path if output_dir provided
+    output_path = None
+    if output_dir:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{transcript_id}.json"
 
     for i in range(1, target_exchanges + 1):
         logger.debug(f"  Exchange {i}/{target_exchanges}")
@@ -763,6 +773,18 @@ async def generate_transcript(
             exchange_number=i,
         )
         exchanges.append(exchange)
+
+        # Progressive save after each exchange
+        if output_path:
+            transcript = Transcript(
+                id=transcript_id,
+                persona=persona,
+                exchanges=exchanges,
+                target_exchanges=target_exchanges,
+                created_at=datetime.now().isoformat(),
+            )
+            with open(output_path, "w") as f:
+                json.dump(transcript.to_dict(), f, indent=2)
 
     return Transcript(
         id=transcript_id,
@@ -822,16 +844,17 @@ async def generate_batch(
         # Generate persona
         persona = generate_persona(config, seed=seed)
 
-        # Generate transcript
+        # Generate transcript with progressive saving
         transcript = await generate_transcript(
             backend=backend,
             config=config,
             persona=persona,
             target_exchanges=target_exchanges,
+            output_dir=output_dir,
         )
 
-        # Save immediately (checkpoint)
-        path = save_transcript(transcript, output_dir)
+        # Path already saved progressively, just record it
+        path = output_dir / f"{transcript.id}.json"
         saved_paths.append(path)
 
     return saved_paths

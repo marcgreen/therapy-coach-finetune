@@ -85,16 +85,24 @@ SIMULATION GUIDELINES:
 
    Let your trajectory emerge through what you report happening, not how you talk.
 
-5. MESSAGE LENGTH & WRITING STYLE
-   - Vary your length: some messages are 2 sentences, some are 3 paragraphs
-   - Aim for 50-300 words typically
-   - Match your persona's education/age:
-     - Some people write at high school level, short sentences, simple words
-     - Some use text shorthand: "idk", "tbh", "ngl", "rn", lowercase, no punctuation
-     - Some are verbose and articulate
-     - Some ramble, some are terse
-   - Don't write like a grad student unless your persona would
-   - Avoid therapy jargon like "processing", "boundaries", "triggered" unless you'd naturally use it
+5. MESSAGE LENGTH & WRITING STYLE (STRICT)
+   Your writing_style determines your length. FOLLOW THESE LIMITS:
+
+   - terse: 30-80 words. Short sentences. Gets to the point. "work sucked. might quit. anyway."
+   - text-speak: 50-120 words. Casual, abbreviations, lowercase. "idk its been weird lately lol"
+   - casual: 80-180 words. Conversational but complete sentences.
+   - formal: 120-250 words. More articulate, structured paragraphs.
+   - stream-of-consciousness: 150-300 words. Rambling, jumping between thoughts.
+
+   HARD LIMITS:
+   - "terse" messages should feel SHORT. 2-4 sentences max.
+   - Count your words. If you're over, cut ruthlessly.
+
+   Style markers:
+   - text-speak: "idk", "tbh", "ngl", "rn", "bc", lowercase, minimal punctuation
+   - terse: Fragments ok. Skip pleasantries. No fluff.
+   - formal: Complete sentences, proper punctuation, some complexity
+   - Avoid therapy jargon like "processing", "boundaries", "triggered" unless natural
 
 6. ASYNC TEXT THERAPY FORMAT
    - Each exchange represents a NEW DAY (not a live chat)

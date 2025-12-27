@@ -1296,7 +1296,7 @@ def print_results(result: AssessmentResult) -> None:
         print(f"\nFailed ({len(result.failed_checks)}):")
         for cid in result.failed_checks:
             status = "ERROR" if result.answers[cid] == "ERROR" else "NO"
-            print(f"  {cid} [{status}]: {result.reasonings[cid][:80]}...")
+            print(f"  {cid} [{status}]: {result.reasonings[cid]}")
 
     print("\nAll Criteria:")
     for cid, ans in sorted(result.answers.items()):
@@ -1308,8 +1308,8 @@ def print_results(result: AssessmentResult) -> None:
             status = "!"
         else:
             status = "x"
-        reason = result.reasonings[cid][:60]
-        print(f"  {status} {cid} [{ans}]: {reason}...")
+        reason = result.reasonings[cid]
+        print(f"  {status} {cid} [{ans}]: {reason}")
 
 
 def load_conversation_from_file(file_path: Path) -> ConversationInput:
