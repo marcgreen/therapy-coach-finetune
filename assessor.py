@@ -17,9 +17,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Literal
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-from llm_backend import ClaudeCLIBackend, LLMBackend
+from llm_backend import ClaudeCLIBackend, GoogleBackend, LLMBackend, OpenAIBackend
+
+load_dotenv()
 
 # =============================================================================
 # Logging Configuration
@@ -47,16 +50,32 @@ def setup_logging(level: int = logging.INFO) -> None:
 _backend: LLMBackend | None = None
 
 
-def get_backend(model: str = "opus") -> LLMBackend:
+def get_backend(
+    backend_type: str = "claude",
+    model: str | None = None,
+) -> LLMBackend:
     """Get or create the module-level LLM backend singleton.
 
-    Uses Claude CLI with the specified model (default: opus for quality).
+    Args:
+        backend_type: "claude", "openai", or "google"
+        model: Model to use. Defaults: opus for Claude, gpt-4o for OpenAI,
+               gemini-3-flash for Google.
     """
     global _backend
 
     if _backend is None:
-        logger.debug(f"Creating new Claude CLI backend with model: {model}")
-        _backend = ClaudeCLIBackend(model=model)
+        if backend_type == "openai":
+            model = model or "gpt-5.2"
+            logger.debug(f"Creating OpenAI backend with model: {model}")
+            _backend = OpenAIBackend(model=model)
+        elif backend_type == "google":
+            model = model or "gemini-3-flash-preview"
+            logger.debug(f"Creating Google backend with model: {model}")
+            _backend = GoogleBackend(model=model)
+        else:
+            model = model or "opus"
+            logger.debug(f"Creating Claude CLI backend with model: {model}")
+            _backend = ClaudeCLIBackend(model=model)
 
     return _backend
 
@@ -1356,22 +1375,38 @@ def load_conversation_from_file(file_path: Path) -> ConversationInput:
 
 # CLI interface
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python assessor.py <conversation.json>")
-        print()
-        print("Input file formats (choose one):")
-        print(
-            '  1. TRL messages (recommended): {"messages": [{"role": "...", "content": "..."}]}'
-        )
-        print(
-            '  2. Turns format: {"turns": [{"user": "...", "assistant": "..."}, ...]}'
-        )
-        print('  3. Simple list: [["user msg", "assistant msg"], ...]')
-        print()
-        print("Use - for stdin: cat conversation.json | python assessor.py -")
-        sys.exit(1)
+    import argparse
 
-    input_path = sys.argv[1]
+    parser = argparse.ArgumentParser(
+        description="Assess conversation quality using LLM-as-judge",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Input file formats (choose one):
+  1. TRL messages (recommended): {"messages": [{"role": "...", "content": "..."}]}
+  2. Turns format: {"turns": [{"user": "...", "assistant": "..."}, ...]}
+  3. Simple list: [["user msg", "assistant msg"], ...]
+
+Use - for stdin: cat conversation.json | python assessor.py -
+""",
+    )
+    parser.add_argument("input", help="Path to conversation JSON file, or - for stdin")
+    parser.add_argument(
+        "--backend",
+        choices=["claude", "openai", "google"],
+        default="claude",
+        help="LLM backend to use (default: claude)",
+    )
+    parser.add_argument(
+        "--model",
+        help="Model to use (default: opus for claude, gpt-5.2 for openai, gemini-3-flash for google)",
+    )
+    args = parser.parse_args()
+
+    # Initialize backend with specified type
+    get_backend(backend_type=args.backend, model=args.model)
+    print(f"Using backend: {_backend.name if _backend else 'unknown'}")
+
+    input_path = args.input
 
     try:
         if input_path == "-":

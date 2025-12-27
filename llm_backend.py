@@ -187,6 +187,133 @@ class OpenAIBackend(LLMBackend):
         return response.output_parsed
 
 
+class GoogleBackend(LLMBackend):
+    """Google Gemini API backend using the google-genai SDK.
+
+    Uses the async client for all operations.
+    Structured output is handled by prompting for JSON and parsing.
+    """
+
+    def __init__(
+        self,
+        model: str = "gemini-3-flash",
+        api_key: str | None = None,
+    ):
+        """Initialize Google Gemini backend.
+
+        Args:
+            model: Model to use (default: gemini-3-flash)
+            api_key: Optional API key (uses GOOGLE_API_KEY env var if not provided)
+        """
+        from google import genai
+
+        self._client = genai.Client(api_key=api_key)
+        self._model = model
+
+    @property
+    def name(self) -> str:
+        return f"Google ({self._model})"
+
+    async def complete(
+        self,
+        prompt: str,
+        system: str | None = None,
+        max_tokens: int = 4096,
+    ) -> CompletionResult:
+        """Generate completion using Google Gemini API."""
+        from google.genai import types
+
+        # Build contents - Gemini uses a different format
+        contents: list[types.Content] = []
+
+        if system:
+            # System instruction is passed separately in the config
+            pass
+
+        contents.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
+
+        config = types.GenerateContentConfig(
+            max_output_tokens=max_tokens,
+            system_instruction=system if system else None,
+        )
+
+        response = await self._client.aio.models.generate_content(
+            model=self._model,
+            contents=contents,
+            config=config,
+        )
+
+        # Extract usage metadata with safe defaults
+        input_tokens = 0
+        output_tokens = 0
+        if response.usage_metadata:
+            input_tokens = response.usage_metadata.prompt_token_count or 0
+            output_tokens = response.usage_metadata.candidates_token_count or 0
+
+        return CompletionResult(
+            content=response.text or "",
+            model=self._model,
+            usage={
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            },
+        )
+
+    async def complete_structured(
+        self,
+        prompt: str,
+        response_model: type[T],
+        system: str | None = None,
+        max_tokens: int = 4096,
+    ) -> T:
+        """Generate structured completion by prompting for JSON.
+
+        Note: Uses JSON prompting similar to Claude CLI.
+        """
+        # Build a prompt that asks for JSON matching the schema
+        schema = response_model.model_json_schema()
+        structured_prompt = f"""{prompt}
+
+Respond with valid JSON matching this schema:
+```json
+{json.dumps(schema, indent=2)}
+```
+
+Output only the JSON, no other text."""
+
+        result = await self.complete(
+            prompt=structured_prompt,
+            system=system,
+            max_tokens=max_tokens,
+        )
+
+        # Parse the response as JSON
+        try:
+            content = result.content.strip()
+            if content.startswith("```"):
+                # Extract from code block
+                lines = content.split("\n")
+                json_lines = []
+                in_block = False
+                for line in lines:
+                    if line.startswith("```"):
+                        if not in_block:
+                            in_block = True
+                            continue
+                        else:
+                            break
+                    elif in_block:
+                        json_lines.append(line)
+                content = "\n".join(json_lines)
+
+            data = json.loads(content)
+            return response_model.model_validate(data)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise ValueError(
+                f"Failed to parse Google response as {response_model.__name__}: {e}"
+            )
+
+
 class ClaudeCLIBackend(LLMBackend):
     """Claude Code CLI backend for zero marginal cost generation.
 
@@ -353,7 +480,7 @@ def get_backend(
     """Get an LLM backend instance.
 
     Args:
-        backend_type: "openai" or "claude"
+        backend_type: "openai", "claude", or "google"
         **kwargs: Backend-specific configuration
 
     Returns:
@@ -363,6 +490,8 @@ def get_backend(
         return OpenAIBackend(**kwargs)
     elif backend_type == "claude":
         return ClaudeCLIBackend(**kwargs)
+    elif backend_type == "google":
+        return GoogleBackend(**kwargs)
     else:
         raise ValueError(f"Unknown backend type: {backend_type}")
 
