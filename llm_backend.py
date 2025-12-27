@@ -451,58 +451,50 @@ class ClaudeCLIBackend(LLMBackend):
         prompt: str,
         response_model: type[T],
         system: str | None = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 4096,  # noqa: ARG002 - CLI doesn't support this
     ) -> T:
-        """Generate structured completion by prompting for JSON.
-
-        Note: Less reliable than OpenAI's native structured output.
-        Consider using OpenAI backend for structured generation.
-        """
-        # Build a prompt that asks for JSON matching the schema
+        """Generate structured completion using Claude CLI's native JSON schema."""
         schema = response_model.model_json_schema()
-        structured_prompt = f"""{prompt}
 
-Respond with valid JSON matching this schema:
-```json
-{json.dumps(schema, indent=2)}
-```
+        cmd = [
+            "claude",
+            "-p",
+            prompt,
+            "--output-format",
+            "json",
+            "--json-schema",
+            json.dumps(schema),
+            "--model",
+            self._model,
+        ]
+        if system:
+            cmd.extend(["--system-prompt", system])
 
-Output only the JSON, no other text."""
-
-        result = await self.complete(
-            prompt=structured_prompt,
-            system=system,
-            max_tokens=max_tokens,
+        # Run in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout,
+            ),
         )
 
-        # Parse the response as JSON
-        try:
-            # Try to extract JSON from the response
-            content = result.content.strip()
-            if content.startswith("```"):
-                # Extract from code block (handles ```json, ```JSON, ``` etc.)
-                lines = content.split("\n")
-                json_lines = []
-                in_block = False
-                for line in lines:
-                    if line.startswith("```"):
-                        if not in_block:
-                            # Starting a code block - skip this line (including ```json tag)
-                            in_block = True
-                            continue
-                        else:
-                            # Ending the code block
-                            break
-                    elif in_block:
-                        json_lines.append(line)
-                content = "\n".join(json_lines)
+        if result.returncode != 0:
+            raise RuntimeError(f"Claude CLI error: {result.stderr}")
 
-            data = json.loads(content)
-            return response_model.model_validate(data)
-        except (json.JSONDecodeError, ValueError) as e:
+        response = json.loads(result.stdout)
+
+        # With --json-schema, the parsed output is in structured_output (already a dict)
+        structured_output = response.get("structured_output")
+        if structured_output is None:
             raise ValueError(
-                f"Failed to parse Claude response as {response_model.__name__}: {e}"
+                f"No structured_output in Claude CLI response. Response: {response}"
             )
+
+        return response_model.model_validate(structured_output)
 
 
 # =============================================================================
