@@ -25,6 +25,13 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_fixed,
+    retry_if_exception,
+    before_sleep_log,
+)
 
 from llm_backend import ClaudeCLIBackend, LLMBackend
 
@@ -713,10 +720,38 @@ def _extract_prompt_section(template: str, section_name: str) -> str:
 
 
 # =============================================================================
+# Retry Logic
+# =============================================================================
+
+
+def _is_rate_limit_error(exception: BaseException) -> bool:
+    """Check if exception is a rate limit error from Claude CLI."""
+    if not isinstance(exception, RuntimeError):
+        return False
+
+    error_msg = str(exception).lower()
+    rate_limit_indicators = [
+        "rate limit",
+        "rate_limit",
+        "429",
+        "too many requests",
+        "quota exceeded",
+        "usage limit",
+    ]
+    return any(indicator in error_msg for indicator in rate_limit_indicators)
+
+
+# =============================================================================
 # Transcript Generation
 # =============================================================================
 
 
+@retry(
+    retry=retry_if_exception(_is_rate_limit_error),
+    stop=stop_after_attempt(7),  # 1 initial + 6 retries
+    wait=wait_fixed(3600),  # 1 hour = 3600 seconds
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
 async def generate_transcript(
     backend: LLMBackend,
     config: GeneratorConfig,
