@@ -1,0 +1,47 @@
+{
+  "timestamp": "2025-12-27T19:04:00.456632",
+  "results": [
+    {
+      "file": "transcript_1001_20251227_135701.json",
+      "passed": true,
+      "score": 1.0,
+      "failures": []
+    },
+    {
+      "file": "transcript_1002_20251227_142524.json",
+      "passed": true,
+      "score": 0.963,
+      "failures": []
+    },
+    {
+      "file": "transcript_1003_20251227_145706.json",
+      "passed": false,
+      "score": 0.787,
+      "failures": []
+    },
+    {
+      "file": "transcript_1020_20251227_133028.json",
+      "passed": true,
+      "score": 0.858,
+      "failures": []
+    },
+    {
+      "file": "transcript_1021_20251227_143132.json",
+      "passed": true,
+      "score": 0.963,
+      "failures": []
+    },
+    {
+      "file": "transcript_1060_20251227_133029.json",
+      "passed": true,
+      "score": 1.0,
+      "failures": []
+    },
+    {
+      "file": "transcript_1090_20251227_133029.json",
+      "passed": true,
+      "score": 0.963,
+      "failures": []
+    }
+  ]
+}
