@@ -34,8 +34,39 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 from pydantic import BaseModel
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception,
+    before_sleep_log,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _is_rate_limit_error(exception: BaseException) -> bool:
+    """Check if exception is a rate limit error from any provider."""
+    # OpenAI
+    try:
+        from openai import RateLimitError as OpenAIRateLimitError
+
+        if isinstance(exception, OpenAIRateLimitError):
+            return True
+    except ImportError:
+        pass
+
+    # Google - check for ClientError with 429 code
+    try:
+        from google.genai.errors import ClientError
+
+        if isinstance(exception, ClientError) and "429" in str(exception):
+            return True
+    except ImportError:
+        pass
+
+    return False
+
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -122,6 +153,12 @@ class OpenAIBackend(LLMBackend):
     def name(self) -> str:
         return f"OpenAI ({self._model})"
 
+    @retry(
+        retry=retry_if_exception(_is_rate_limit_error),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
     async def complete(
         self,
         prompt: str,
@@ -155,6 +192,12 @@ class OpenAIBackend(LLMBackend):
             },
         )
 
+    @retry(
+        retry=retry_if_exception(_is_rate_limit_error),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
     async def complete_structured(
         self,
         prompt: str,
@@ -214,6 +257,12 @@ class GoogleBackend(LLMBackend):
     def name(self) -> str:
         return f"Google ({self._model})"
 
+    @retry(
+        retry=retry_if_exception(_is_rate_limit_error),
+        stop=stop_after_attempt(10),  # More retries for Google's strict rate limits
+        wait=wait_exponential(multiplier=2, min=5, max=120),  # Longer waits for Google
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
     async def complete(
         self,
         prompt: str,
@@ -259,6 +308,12 @@ class GoogleBackend(LLMBackend):
             },
         )
 
+    @retry(
+        retry=retry_if_exception(_is_rate_limit_error),
+        stop=stop_after_attempt(10),
+        wait=wait_exponential(multiplier=2, min=5, max=120),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
     async def complete_structured(
         self,
         prompt: str,
@@ -266,51 +321,35 @@ class GoogleBackend(LLMBackend):
         system: str | None = None,
         max_tokens: int = 4096,
     ) -> T:
-        """Generate structured completion by prompting for JSON.
+        """Generate structured completion using Gemini's native JSON schema support."""
+        from google.genai import types
 
-        Note: Uses JSON prompting similar to Claude CLI.
-        """
-        # Build a prompt that asks for JSON matching the schema
-        schema = response_model.model_json_schema()
-        structured_prompt = f"""{prompt}
+        # Build contents
+        contents: list[types.Content] = []
+        contents.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
 
-Respond with valid JSON matching this schema:
-```json
-{json.dumps(schema, indent=2)}
-```
-
-Output only the JSON, no other text."""
-
-        result = await self.complete(
-            prompt=structured_prompt,
-            system=system,
-            max_tokens=max_tokens,
+        # Use native structured output with response_schema
+        config = types.GenerateContentConfig(
+            max_output_tokens=max_tokens,
+            system_instruction=system if system else None,
+            response_mime_type="application/json",
+            response_schema=response_model,  # Pass Pydantic model directly
         )
 
-        # Parse the response as JSON
-        try:
-            content = result.content.strip()
-            if content.startswith("```"):
-                # Extract from code block
-                lines = content.split("\n")
-                json_lines = []
-                in_block = False
-                for line in lines:
-                    if line.startswith("```"):
-                        if not in_block:
-                            in_block = True
-                            continue
-                        else:
-                            break
-                    elif in_block:
-                        json_lines.append(line)
-                content = "\n".join(json_lines)
+        response = await self._client.aio.models.generate_content(
+            model=self._model,
+            contents=contents,
+            config=config,
+        )
 
+        # Parse the JSON response
+        try:
+            content = response.text or ""
             data = json.loads(content)
             return response_model.model_validate(data)
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(
-                f"Failed to parse Google response as {response_model.__name__}: {e}"
+                f"Failed to parse Google response as {response_model.__name__}: {e}\nResponse: {response.text}"
             )
 
 
