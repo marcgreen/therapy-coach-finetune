@@ -197,7 +197,7 @@ class ClaudeCLIBackend(LLMBackend):
     def __init__(
         self,
         model: str = "opus",
-        timeout: int = 120,
+        timeout: int = 300,
         validate: bool = True,
     ):
         """Initialize Claude CLI backend.

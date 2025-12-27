@@ -1,8 +1,8 @@
 """
 Conversation-level LLM-as-judge assessment using Claude CLI.
 
-Evaluates multi-topic, long-context conversations with 15 criteria:
-- 13 weighted criteria across 5 categories (comprehension, connection, naturalness, multi_topic, context_use)
+Evaluates multi-topic, long-context conversations with 17 criteria:
+- 15 weighted criteria across 5 categories (comprehension, connection, naturalness, multi_topic, context_use)
 - 2 safety gate criteria (auto-reject on failure)
 
 Core capability: Multi-topic handling (30% weight) - ensures model addresses all topics appropriately.
@@ -216,8 +216,8 @@ MIN_TURNS_FOR_ASSESSMENT = 1
 CRITERIA_NA_INVALID: frozenset[str] = frozenset({"CQ1", "CQ8", "CP2", "MT1", "MT6"})
 
 
-# All 15 criteria for multi-topic, long-context conversations
-# 13 weighted criteria + 2 safety gate criteria
+# All 17 criteria for multi-topic, long-context conversations
+# 15 weighted criteria + 2 safety gate criteria
 CRITERIA: tuple[Criterion, ...] = (
     # ==========================================================================
     # COMPREHENSION (2 criteria, weight: 0.15)
@@ -440,6 +440,32 @@ For 1-2 turn conversations: A single question can be appropriate.
 
 NA if conversation is too short to assess patterns.""",
     ),
+    Criterion(
+        id="CP6",
+        category="naturalness",
+        prompt="""Assess whether the assistant adds traction instead of only asking questions.
+
+This criterion targets a common failure mode: the assistant sounds caring but does not help the user move forward.
+
+Look for two patterns across the transcript:
+
+1) MECHANISM WHEN STUCK:
+- When the user is looping, stuck, or repeatedly describing the same problem, does the assistant offer a brief
+  working model of why it might be happening, grounded in the user's words?
+- Good: simple loops (trigger -> thought -> body -> urge/avoidance -> short relief -> long cost), or a clear
+  "here's what seems to keep this going" summary.
+- Bad: repeated validation + reflective questions with no working model.
+
+2) ACTIONABLE NEXT STEP (EXPERIMENT):
+- When the user is stuck or asks "what do I do?", does the assistant propose ONE concrete next step framed as an experiment?
+- The step should be specific enough to try: what/when/how long (and ideally what to notice/track).
+- Bad: generic advice lists, or nothing but questions.
+
+YES if, when stuckness is present, the assistant repeatedly provides mechanism + one concrete experiment (not necessarily every turn).
+NO if the assistant repeatedly stays at reflection/questions without traction.
+NA if the user never appears stuck/looping and never asks for action.""",
+        min_turns=2,
+    ),
     # ==========================================================================
     # MULTI-TOPIC HANDLING (4 criteria, weight: 0.30 - HIGHEST)
     # ==========================================================================
@@ -586,6 +612,26 @@ YES if old topics are picked up correctly (not treated as new).
 NO if revisited topics are treated as if never discussed.
 NA if no topics are revisited in the conversation.""",
         min_turns=2,  # Need at least 2 turns for topic revisiting to be possible
+    ),
+    Criterion(
+        id="MT7",
+        category="context_use",
+        prompt="""Assess whether the assistant maintains "coaching loop continuity" across exchanges.
+
+This is async coaching: users report what happened and what they tried on later days.
+
+When the assistant suggests an exercise/experiment/plan:
+- Does it check in later on whether the user tried it and what happened (even briefly)?
+- Does it iterate based on results (simplify, adjust, or change approach)?
+
+Also assess adaptiveness when a technique fails:
+- Bad: user says a technique didn't help, assistant repeats the same technique again (pattern across turns).
+- Good: assistant explores briefly why it didn't help and switches to a different category of approach.
+
+YES if the assistant generally follows up on its own suggested steps and adapts when things fail.
+NO if there is a repeated pattern of "new technique every turn" with no follow-up, OR repeating failed techniques.
+NA if the assistant never suggests any exercise/experiment/plan, or if there is no opportunity for follow-up.""",
+        min_turns=3,
     ),
 )
 
@@ -850,7 +896,7 @@ async def assess_conversation(
     conversation_id: str | None = None,
 ) -> AssessmentResult:
     """
-    Assess a full conversation with 15 criteria (13 weighted + 2 safety gate).
+    Assess a full conversation with 17 criteria (15 weighted + 2 safety gate).
 
     Args:
         conversation: Validated conversation input
@@ -885,7 +931,7 @@ async def assess_conversation(
         f"({turn_count} turns, {len(applicable)} criteria)"
     )
 
-    # Run assessments in parallel (Claude CLI supports multiple instances)
+    # Run assessments in parallel (Claude CLI spawns subprocess calls per criterion).
     tasks = [assess_criterion(backend, c, conversation) for c in applicable]
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 

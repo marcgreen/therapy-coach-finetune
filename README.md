@@ -6,11 +6,11 @@ Fine-tuning a **privacy-first, locally-runnable therapeutic coaching model** (pr
 
 **Core pipeline:**
 - **Transcript generator**: `transcript_generator.py` — generates multi-topic conversations via user simulation loop
-- **Assessor**: `assessor.py` — LLM-as-judge evaluation (15 criteria: 13 weighted + 2 safety gate) using Claude CLI
+- **Assessor**: `assessor.py` — LLM-as-judge evaluation (17 criteria: 15 weighted + 2 safety gate) using Claude CLI
 - **LLM backend**: `llm_backend.py` — abstraction layer supporting OpenAI API and Claude CLI
 
 **Reference materials:**
-- `reference/assessment-rubric.md` — 15-criterion rubric for conversation quality
+- `reference/assessment-rubric.md` — 17-criterion rubric for conversation quality
 - `reference/therapeutic-frameworks.md` — 9 therapeutic approaches + techniques + failure modes
 
 **Config:**

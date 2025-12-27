@@ -292,14 +292,16 @@ class TestEdgeCases:
 
     def test_partial_category_failure(self) -> None:
         """Category scoring works when only one criterion in a category is failed."""
-        # context_use category has 2 criteria: MT4 and MT5.
-        # If one is NO and the other is YES, the category score should be 0.5.
+        # context_use category includes MT4, MT5, and MT7.
+        # If one is NO and the others are YES, the category score should be 2/3.
         context_ids = {c.id for c in CRITERIA if c.category == "context_use"}
-        assert context_ids == {"MT4", "MT5"}, "context_use should have MT4 and MT5"
+        assert context_ids == {"MT4", "MT5", "MT7"}, (
+            "context_use should have MT4, MT5, MT7"
+        )
 
         # Fail MT4 explicitly (not by index)
         results = all_yes_except({"MT4": "NO"})
         result = compute_score(results, list(CRITERIA))
 
-        # One of 2 criteria failed = 0.5
-        assert result.category_scores["context_use"] == pytest.approx(0.5)
+        # One of 3 criteria failed = 2/3
+        assert result.category_scores["context_use"] == pytest.approx(2 / 3)

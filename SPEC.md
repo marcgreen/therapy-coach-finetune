@@ -345,6 +345,7 @@ pass_threshold = 0.80
 | CP2 | Natural and warm | Reads like real conversation, not robotic |
 | CP4 | Avoids formulaic openers | Not template-y "AI teller" openings |
 | CP5 | Avoids question endings | Doesn't end every response with a question |
+| CP6 | Adds traction | When stuck, provides brief mechanism + one concrete experiment (not just questions) |
 
 **Multi-Topic (0.30):** <- NEW, highest weight
 | ID | Criterion | Checks For |
@@ -359,6 +360,7 @@ pass_threshold = 0.80
 |----|-----------|------------|
 | MT4 | History utilization | References prior context when it adds value (not forced) |
 | MT5 | Thread continuity | Picks up old topics correctly, doesn't treat as new |
+| MT7 | Coaching loop continuity | Follows up on suggested experiments and adapts when interventions fail |
 
 ### NA-Invalid Criteria
 
@@ -372,7 +374,7 @@ Some criteria must ALWAYS return YES or NO, never NA. If the judge returns NA fo
 | **MT1** (Topic coverage) | If there are topics, can assess if they're covered |
 | **MT6** (Segmentation clarity) | Can always assess response structure |
 
-**NA-valid criteria:** CQ2, CQ9, MT2, MT3, MT4, MT5 (conditional on context/content present)
+**NA-valid criteria:** CQ2, CQ9, CP4, CP5, CP6, MT2, MT3, MT4, MT5, MT7 (conditional on context/content present)
 
 **Implementation:** See `assessor.py` and `reference/assessment-rubric.md`
 
