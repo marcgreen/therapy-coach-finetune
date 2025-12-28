@@ -22,6 +22,12 @@ Create **generalized Claude Code skills** for end-to-end fine-tuning that can be
 
 **Why both goals matter:** The therapeutic model is the immediate use case; the SKILLs enable anyone to replicate this pipeline for their domain (coding assistants, legal, medical, etc.).
 
+---
+
+**📋 Implementation Guide:** For detailed step-by-step implementation instructions, see [`docs/plans/2025-12-28-transcript-filtering-and-training-pipeline.md`](docs/plans/2025-12-28-transcript-filtering-and-training-pipeline.md)
+
+---
+
 ### Primary Motivations
 
 1. Privacy — personal conversations stay local
@@ -148,8 +154,39 @@ We **ensure every assistant message in the included history is high-quality and 
 #### Leakage-safe splitting and filtering (MVP-critical)
 
 - **Split first by transcript/persona**, then slice within each split. This prevents evaluation leakage from overlapping histories and repeated personas.
-- **Filter at transcript level first**: assess the full transcript as one continuous conversation and only keep **passing transcripts** for slicing. This prevents a single bad assistant turn from contaminating many derived slices.
-- Optional (later): additional slice-level filtering for fine-grained quality control.
+- **Filter at transcript level first**: assess the full transcript as one continuous conversation. Transcripts with structural artifacts (truncation, meta-commentary) are truncated to the last valid exchange. Transcripts that fail therapeutic rubric assessment are fixed using Claude (with entailment constraint) or rejected. Only passing or fixed-and-passing transcripts are kept for slicing.
+- **Artifact handling**: Transcripts with generation artifacts (truncation, character breaks) are salvaged by truncating to the last valid exchange, provided ≥10 exchanges remain. This maximizes data utilization while maintaining quality.
+- **Claude fixup**: Failing exchanges are rewritten by Claude to fix rubric issues while **preserving conversation continuity** (fix must entail user's next message). If fix would break continuity → truncate instead.
+
+### Filtering Pipeline (Multi-Stage)
+
+Transcripts pass through multiple filters in sequence:
+
+1. **Artifact Detection** — Structural issues (truncation, meta-commentary, character breaks)
+   - Patterns detected: "I'm an AI", "Claude/Anthropic", missing punctuation, suspiciously short responses
+   - Action: Attempt Claude fixup first (artifacts may be contextually fixable)
+   - If fixup fails: Truncate to last valid exchange
+   - Minimum length after truncation: 10 exchanges
+
+2. **Artifact Fixup (If Needed)** — Rewrite exchanges with artifacts
+   - **Critical constraint**: Fixed response must seamlessly entail user's next message
+   - Remove meta-commentary while preserving therapeutic content
+   - If entailment impossible → truncate at that exchange instead
+
+3. **Rubric Assessment** — Therapeutic quality (17 criteria, 0.80 threshold)
+   - Action: If failed, attempt Claude fixup; if unfixable, reject
+   - Safety gate failures (CQ8, CQ9) are auto-reject without fixup attempt
+   - Non-safety failures trigger fixup with entailment constraint
+
+4. **Rubric Fixup (If Needed)** — Rewrite exchanges that failed rubric
+   - Same entailment constraint as artifact fixup
+   - Re-assess after fixup to verify improvement
+
+5. **Future filters** — Extensible for additional criteria (length, topic coverage, etc.)
+
+**Rejection tracking**: Log all rejection reasons for prompt iteration.
+
+**Implementation details**: See `docs/plans/2025-12-28-transcript-filtering-and-training-pipeline.md` for complete implementation guide.
 
 **Training data format:**
 ```json
@@ -175,23 +212,34 @@ We **ensure every assistant message in the included history is high-quality and 
 | Very long (30K+) | 5% | 100 | 40K |
 | **Total** | 100% | **2000** | **~26M tokens** |
 
-### Source Transcript Generation (Hybrid)
+### Source Transcript Generation
 
-Generate transcripts of varying lengths, then slice longer ones:
+Generate 155 transcripts with varied lengths (turn count, not token count):
 
-- ~20 short transcripts (5-10 exchanges) -> ~100 examples
-- ~30 medium transcripts (15-25 exchanges) -> ~400 examples
-- ~50 long transcripts (30-50 exchanges) -> ~1500 examples (multiple slices each)
+- **31 short transcripts** (20 turns, 20% of total) → ~155 examples after slicing
+- **78 medium transcripts** (50 turns, 50% of total) → ~936 examples after slicing
+- **39 long transcripts** (75 turns, 25% of total) → ~585 examples after slicing
+- **7 very long transcripts** (100 turns, 5% of total) → ~140 examples after slicing
+- **Total: 155 transcripts → ~1,816 training examples**
 
-This ensures the model sees:
+**Per-transcript random slicing**: Each transcript gets unique random slice points (seeded by transcript ID) to prevent model from learning fixed slice patterns. Slicing density increases toward end of conversation (sparse early, dense late).
+
+**Token validation**: All training examples must be <120K tokens (buffer for 128K context window). Turn count determines transcript category; token count is a safety check per example.
+
+This distribution ensures the model sees:
 - Brand new conversations (no history to use)
 - Building relationships (growing history)
 - Deep established relationships (rich history to reference)
 
-### Holdout Split
+### Training Data
 
-- **Training:** 90% of filtered examples (~1.8K)
-- **Evaluation:** 10% holdout (~200 examples, stratified by topic/difficulty)
+**All filtered examples used for training** (~1,816 examples after filtering and slicing)
+
+**No traditional holdout set needed** because:
+- LoRA fine-tuning has low overfitting risk (only trains small adapter)
+- Starting from strong pretrained model
+- Primary evaluation is full-conversation generation on new personas (see Evaluation section)
+- Training loss monitoring sufficient for convergence tracking
 
 ### Pilot Calibration
 
@@ -394,6 +442,45 @@ Some criteria must ALWAYS return YES or NO, never NA. If the judge returns NA fo
 
 ---
 
+## Evaluation Approach: Full-Conversation Generation
+
+### Methodology
+
+Rather than single-turn prediction, we evaluate by having both models generate **complete conversations** and comparing transcript quality.
+
+**Protocol:**
+1. Generate 10-15 NEW personas (not used in training at all)
+2. For each persona, generate 3 conversations per model (30-45 conversations total per model)
+3. Use same user simulator for both models (same personas, deterministic seeding)
+4. Assess entire transcripts using existing rubric
+5. Compare average scores with paired t-test (p < 0.05 for significance)
+
+**Why full-conversation evaluation:**
+- Tests realistic use case (50-turn conversations, not just next-turn prediction)
+- Reuses existing `assess_transcript()` (already calibrated for full conversations)
+- Captures multi-turn phenomena (consistency, topic tracking, relationship building)
+- More rigorous than single-exchange assessment
+
+**What we're measuring:**
+- Given same conversation context (user simulator + persona), does fine-tuned model generate better responses than base model?
+- Both models see identical high-quality conversation history (from filtered transcripts)
+- We evaluate the model's GENERATED responses, not the history
+
+**Evaluation metrics:**
+```python
+comparison = {
+    "base_model": {"mean": 0.72, "std": 0.08, "pass_rate": 0.45},
+    "finetuned": {"mean": 0.84, "std": 0.06, "pass_rate": 0.70},
+    "improvement": 0.12,  # Absolute
+    "improvement_pct": 16.7,  # Percentage
+    "p_value": 0.003,  # Significant!
+}
+```
+
+**Success criteria:** Improvement ≥10% with p < 0.05
+
+---
+
 ## Prompt Optimization: DSPy/GEPA
 
 Instead of manual prompt iteration, use automated optimization:
@@ -488,26 +575,30 @@ def ask_claude(prompt: str, system: str | None = None) -> str:
                               |
                               v
 ┌─────────────────────────────────────────────────────────────┐
-│  STEP 3: Slice into Training Examples                       │
-│  From full transcript, create examples with varying history │
-│  • Exchange 3: history = exchanges 1-2 (~2K tokens)         │
-│  • Exchange 10: history = exchanges 1-9 (~10K tokens)       │
-│  • Exchange 25: history = exchanges 1-24 (~30K tokens)      │
+│  STEP 3: Multi-Stage Filtering                             │
+│  For each transcript:                                       │
+│  • Artifact detection → truncate if needed (≥10 exchanges)  │
+│  • Rubric assessment (17 criteria, 0.80 threshold)         │
+│  • If failed: Claude fixup with entailment constraint      │
+│  • If unfixable: reject                                    │
+│  • Track rejection reasons for prompt iteration            │
 └─────────────────────────────────────────────────────────────┘
                               |
                               v
 ┌─────────────────────────────────────────────────────────────┐
-│  STEP 4: Assess Transcripts (MVP gate)                       │
-│  For each full transcript:                                  │
-│  • Run through updated rubric (safety gate + weighted)      │
-│  • Keep only passing transcripts                            │
+│  STEP 4: Train/Eval Split                                  │
+│  • Split filtered transcripts by persona (10% eval)        │
+│  • Both train and eval sets are filtered/fixed             │
+│  • Prevents leakage from overlapping personas              │
 └─────────────────────────────────────────────────────────────┘
                               |
                               v
 ┌─────────────────────────────────────────────────────────────┐
-│  STEP 5: Split then Slice                                   │
-│  • Split by transcript/persona (train/eval)                 │
-│  • Slice within split into training examples                │
+│  STEP 5: Per-Transcript Random Slicing                     │
+│  • Each transcript gets unique random slice points         │
+│  • Density increases toward end (sparse→dense)             │
+│  • Validate token limit (<120K) per example                │
+│  • Result: ~1,975 training examples from 155 transcripts   │
 └─────────────────────────────────────────────────────────────┘
                               |
                               v
