@@ -437,7 +437,21 @@ class ClaudeCLIBackend(LLMBackend):
         )
 
         if result.returncode != 0:
-            raise RuntimeError(f"Claude CLI error: {result.stderr}")
+            error_msg = (
+                result.stderr.strip()
+                or result.stdout.strip()
+                or "Unknown error (empty output)"
+            )
+            logger.error(
+                f"Claude CLI failed:\n"
+                f"  Command: {' '.join(cmd[:6])}...\n"  # Log first 6 args (avoids huge prompts)
+                f"  Exit code: {result.returncode}\n"
+                f"  Stderr: {result.stderr[:500] if result.stderr else '(empty)'}\n"
+                f"  Stdout: {result.stdout[:500] if result.stdout else '(empty)'}"
+            )
+            raise RuntimeError(
+                f"Claude CLI error (exit {result.returncode}): {error_msg}"
+            )
 
         response = json.loads(result.stdout)
         return CompletionResult(
@@ -483,7 +497,21 @@ class ClaudeCLIBackend(LLMBackend):
         )
 
         if result.returncode != 0:
-            raise RuntimeError(f"Claude CLI error: {result.stderr}")
+            error_msg = (
+                result.stderr.strip()
+                or result.stdout.strip()
+                or "Unknown error (empty output)"
+            )
+            logger.error(
+                f"Claude CLI failed:\n"
+                f"  Command: {' '.join(cmd[:6])}...\n"  # Log first 6 args (avoids huge prompts)
+                f"  Exit code: {result.returncode}\n"
+                f"  Stderr: {result.stderr[:500] if result.stderr else '(empty)'}\n"
+                f"  Stdout: {result.stdout[:500] if result.stdout else '(empty)'}"
+            )
+            raise RuntimeError(
+                f"Claude CLI error (exit {result.returncode}): {error_msg}"
+            )
 
         response = json.loads(result.stdout)
 

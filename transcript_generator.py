@@ -729,6 +729,15 @@ def _is_retryable_error(exception: BaseException) -> bool:
     # Accept RuntimeError, Exception, or any BaseException
     error_msg = str(exception).lower()
 
+    # Special case: Empty CLI errors (often indicate rate limits or silent failures)
+    if "claude cli error" in error_msg and (
+        error_msg.endswith("error:") or "unknown error" in error_msg
+    ):
+        logger.warning(
+            "Empty/unknown Claude CLI error detected - treating as retryable"
+        )
+        return True
+
     # Comprehensive list of retryable error indicators
     retryable_indicators = [
         # Rate limit variations
