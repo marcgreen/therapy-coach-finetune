@@ -4,7 +4,7 @@
 
 **Goal:** Build a complete pipeline for generating, filtering, fixing, slicing, and training a therapeutic coaching model with QLora fine-tuning on Gemma 3 12B.
 
-**Architecture:** Multi-stage filtering pipeline with Claude-powered fixup. Transcripts pass through artifact detection → Claude fixup (with entailment constraint) → rubric assessment. Both train and eval sets are fixed to create high-quality conversation contexts. Evaluation uses full-conversation generation (not single-turn prediction). Per-transcript random slicing prevents pattern learning.
+**Architecture:** Multi-stage filtering pipeline with Claude-powered fixup. Transcripts pass through artifact detection → Claude fixup (with entailment constraint) → rubric assessment. All filtered transcripts used for training (~1,816 examples). Evaluation uses full-conversation generation on NEW personas (not single-turn prediction). Per-transcript random slicing prevents pattern learning.
 
 **Tech Stack:** Python 3.12, uv, Claude Code API (unlimited usage), DSPy, HuggingFace Transformers/TRL, QLora, llama.cpp/GGUF
 
@@ -40,9 +40,10 @@ We're building a **privacy-first, locally-runnable therapeutic coaching model** 
 - **Why:** Prevents model from learning slice-pattern artifacts
 - **Result:** More natural generalization
 
-**4. Fix Both Train and Eval Sets**
-- **Insight:** We're evaluating the model's GENERATED responses, not the conversation history
-- **Result:** Both sets get high-quality context. Evaluation measures: "given good conversation context, does fine-tuned model generate better responses than base model?"
+**4. Train on All Filtered Data (No Holdout Set)**
+- **Insight:** We're evaluating on NEW personas using full-conversation generation, not a holdout set from training personas
+- **Why:** LoRA has low overfitting risk; primary metric is generation quality on new personas, not held-out examples
+- **Result:** Maximize training data (~1,816 examples). Evaluation measures: "does fine-tuned model generate better conversations than base model on unseen personas?"
 
 ### Conversation Model
 

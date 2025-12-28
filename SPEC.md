@@ -151,9 +151,9 @@ We explicitly train on examples with substantial prior history. Each training ex
 
 We **ensure every assistant message in the included history is high-quality and acceptable to supervise**. This allows standard SFT training over all assistant turns without loss masking.
 
-#### Leakage-safe splitting and filtering (MVP-critical)
+#### Transcript filtering and slicing (MVP-critical)
 
-- **Split first by transcript/persona**, then slice within each split. This prevents evaluation leakage from overlapping histories and repeated personas.
+- **Organize by transcript/persona** for systematic filtering and slicing.
 - **Filter at transcript level first**: assess the full transcript as one continuous conversation. Transcripts with structural artifacts (truncation, meta-commentary) are truncated to the last valid exchange. Transcripts that fail therapeutic rubric assessment are fixed using Claude (with entailment constraint) or rejected. Only passing or fixed-and-passing transcripts are kept for slicing.
 - **Artifact handling**: Transcripts with generation artifacts (truncation, character breaks) are salvaged by truncating to the last valid exchange, provided ≥10 exchanges remain. This maximizes data utilization while maintaining quality.
 - **Claude fixup**: Failing exchanges are rewritten by Claude to fix rubric issues while **preserving conversation continuity** (fix must entail user's next message). If fix would break continuity → truncate instead.
@@ -202,15 +202,19 @@ Transcripts pass through multiple filters in sequence:
 }
 ```
 
-### Example Length Distribution (Selective)
+### Example Length Distribution (Target)
+
+After filtering and slicing 155 transcripts, we target approximately:
 
 | Length | % | Examples | Avg tokens |
 |--------|---|----------|------------|
-| Short (0-5K) | 20% | 400 | 3K |
-| Medium (5-15K) | 50% | 1000 | 10K |
-| Long (15-30K) | 25% | 500 | 22K |
-| Very long (30K+) | 5% | 100 | 40K |
-| **Total** | 100% | **2000** | **~26M tokens** |
+| Short (0-5K) | 20% | ~363 | 3K |
+| Medium (5-15K) | 50% | ~908 | 10K |
+| Long (15-30K) | 25% | ~454 | 22K |
+| Very long (30K+) | 5% | ~91 | 40K |
+| **Total** | 100% | **~1,816** | **~23M tokens** |
+
+*Note: Actual numbers depend on filtering pass rate and per-transcript slicing variance.*
 
 ### Source Transcript Generation
 
@@ -577,7 +581,8 @@ def ask_claude(prompt: str, system: str | None = None) -> str:
 ┌─────────────────────────────────────────────────────────────┐
 │  STEP 3: Multi-Stage Filtering                             │
 │  For each transcript:                                       │
-│  • Artifact detection → truncate if needed (≥10 exchanges)  │
+│  • Artifact detection → try Claude fixup first             │
+│  • If fixup fails: truncate to last valid (≥10 exchanges)  │
 │  • Rubric assessment (17 criteria, 0.80 threshold)         │
 │  • If failed: Claude fixup with entailment constraint      │
 │  • If unfixable: reject                                    │
@@ -586,25 +591,18 @@ def ask_claude(prompt: str, system: str | None = None) -> str:
                               |
                               v
 ┌─────────────────────────────────────────────────────────────┐
-│  STEP 4: Train/Eval Split                                  │
-│  • Split filtered transcripts by persona (10% eval)        │
-│  • Both train and eval sets are filtered/fixed             │
-│  • Prevents leakage from overlapping personas              │
-└─────────────────────────────────────────────────────────────┘
-                              |
-                              v
-┌─────────────────────────────────────────────────────────────┐
-│  STEP 5: Per-Transcript Random Slicing                     │
+│  STEP 4: Per-Transcript Random Slicing                     │
 │  • Each transcript gets unique random slice points         │
 │  • Density increases toward end (sparse→dense)             │
 │  • Validate token limit (<120K) per example                │
-│  • Result: ~1,975 training examples from 155 transcripts   │
+│  • Result: ~1,816 training examples from 155 transcripts   │
 └─────────────────────────────────────────────────────────────┘
                               |
                               v
 ┌─────────────────────────────────────────────────────────────┐
-│  STEP 6: Train                                              │
+│  STEP 5: Train                                              │
 │  • QLoRA fine-tuning on Gemma 3 12B (via Hugging Face `hf-llm-trainer` SKILL) │
+│  • All filtered examples used for training (~1,816)         │
 │  • Export to GGUF for local inference                       │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -631,8 +629,7 @@ def ask_claude(prompt: str, system: str | None = None) -> str:
 
 **Output:**
 - `output/transcripts/` — Generated full transcripts
-- `output/training_data.jsonl` — Filtered training examples
-- `output/eval_holdout.jsonl` — Held-out evaluation set
+- `output/training_data.jsonl` — Filtered training examples (~1,816)
 
 ---
 
@@ -654,10 +651,10 @@ def ask_claude(prompt: str, system: str | None = None) -> str:
 
 ### Data
 - `output/transcripts/*.jsonl` — Full generated transcripts
-- `output/training_data.jsonl` — Filtered training examples (~2K)
-- `output/eval_holdout.jsonl` — Held-out evaluation set (10%)
+- `output/training_data.jsonl` — Filtered training examples (~1,816)
 - `output/multi_topic_scenarios.jsonl` — Base model evaluation scenarios
 - `output/base_model_mt_assessments.jsonl` — Multi-topic base model results
+- `output/eval_transcripts/` — Full-conversation evaluation transcripts (base vs fine-tuned)
 
 ### Documentation
 - Updated `SPEC.md` — This document
