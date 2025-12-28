@@ -786,7 +786,8 @@ def _is_retryable_error(exception: BaseException) -> bool:
     reraise=True,  # Re-raise the exception after all retries exhausted
 )
 async def generate_transcript(
-    backend: LLMBackend,
+    user_backend: LLMBackend,
+    assistant_backend: LLMBackend,
     config: GeneratorConfig,
     persona: Persona,
     target_exchanges: int = 15,
@@ -818,7 +819,7 @@ async def generate_transcript(
 
         # Generate user message
         user_message = await generate_user_message(
-            backend=backend,
+            backend=user_backend,
             config=config,
             persona=persona,
             exchanges=exchanges,
@@ -828,7 +829,7 @@ async def generate_transcript(
 
         # Generate assistant response
         assistant_response = await generate_assistant_response(
-            backend=backend,
+            backend=assistant_backend,
             config=config,
             exchanges=exchanges,
             user_message=user_message,
@@ -894,9 +895,11 @@ async def generate_batch(
     """Generate a batch of transcripts."""
     config = load_config()
 
-    # Initialize Claude CLI backend
+    # Initialize Claude CLI backends (Sonnet for user, Opus for assistant)
     try:
-        backend = ClaudeCLIBackend(validate=True)
+        user_backend = ClaudeCLIBackend(model="sonnet", validate=True)
+        assistant_backend = ClaudeCLIBackend(model="opus", validate=True)
+        logger.info("Using Sonnet for user simulation, Opus for assistant generation")
     except RuntimeError as e:
         logger.error(f"Backend initialization failed: {e}")
         sys.exit(1)
@@ -914,7 +917,8 @@ async def generate_batch(
 
         # Generate transcript with progressive saving
         transcript = await generate_transcript(
-            backend=backend,
+            user_backend=user_backend,
+            assistant_backend=assistant_backend,
             config=config,
             persona=persona,
             target_exchanges=target_exchanges,

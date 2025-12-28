@@ -363,14 +363,14 @@ class ClaudeCLIBackend(LLMBackend):
     def __init__(
         self,
         model: str = "opus",
-        timeout: int = 300,
+        timeout: int = 1800,  # 30 minutes for long prompts
         validate: bool = True,
     ):
         """Initialize Claude CLI backend.
 
         Args:
             model: Model alias to use (e.g., "opus", "sonnet", "claude-opus-4-5-20251101")
-            timeout: Timeout in seconds for CLI calls
+            timeout: Timeout in seconds for CLI calls (default: 1800 = 30 min)
             validate: If True, verify CLI is installed on init (default: True)
 
         Raises:
