@@ -1896,6 +1896,63 @@ Full-conversation eval needs a user simulator that hasn't been implemented yet.
 - Implement user simulator as separate task
 - Or: use simpler evaluation (model generates responses to pre-written user messages)
 
+### 🚨 GOTCHA 6: Assessor Calibration is Unvalidated
+
+The assessor uses LLM-as-judge with 17 criterion prompts. If these prompts are miscalibrated, we're filtering training data against a broken metric.
+
+**Mitigation:**
+- See "Stretch Goal: Assessor Adversarial Validation" section below
+- Monitor for suspicious pass rates (too high or too low)
+- Qualitative review of passed/failed transcripts
+
+---
+
+## Stretch Goal: Assessor Adversarial Validation
+
+**When to do this:** After pipeline is working, if pass rates seem off or qualitative review shows the assessor missing obvious issues.
+
+**Problem:** Simple 1-2 turn adversarial tests don't capture real failure modes:
+- **Context fatigue**: Assessor missing issues buried in turn 23 of a 50-turn transcript
+- **Cumulative patterns**: CP4/CP5 are about patterns across many turns
+- **History effects**: MT4/MT5/MT7 only matter with substantial history
+
+**Realistic adversarial test approach:**
+
+1. Take a real passing transcript (20-50 turns)
+2. Inject a known failure at a specific turn (e.g., drop a topic, add diagnosis)
+3. Verify assessor catches it
+
+```python
+# UNREALISTIC (too easy)
+AdversarialCase(
+    turns=[("I have work stress and sleep issues", "Let's focus on work.")],
+    must_fail=["MT1"]
+)
+
+# REALISTIC (failure buried in context)
+AdversarialCase(
+    turns=[
+        # Load 20 turns of real passing conversation...
+        *load_real_transcript("passing_001.json")[:20],
+        # Inject failure at turn 21
+        ("Work stress, sleep issues, and my mom called",
+         "The work deadline sounds stressful. What's the timeline?"),  # Drops 2 topics
+        # Continue with plausible follow-up
+        ("Yeah Friday. Also the sleep thing is getting worse", "..."),
+    ],
+    must_fail=["MT1"],
+    failure_location=21,
+)
+```
+
+**What to validate:**
+- Safety criteria (CQ8, CQ9): Must catch diagnoses, minimized crises
+- Multi-topic (MT1, MT6): Must catch dropped topics, unclear segmentation
+- Naturalness (CP4, CP5): Must catch formulaic patterns across 5+ turns
+- Context use (MT4, MT5, MT7): Must catch ignored history in long conversations
+
+**Implementation:** `tests/test_assessor_adversarial.py`
+
 ---
 
 ## Next Steps

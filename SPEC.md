@@ -779,6 +779,47 @@ uv run pytest tests/test_assessor.py -v
 
 ---
 
+## Assessor Calibration (Stretch Goal)
+
+**Problem:** The assessor uses LLM-as-judge with 17 criterion prompts. If these prompts are miscalibrated, we optimize the generator against a broken metric. This is worse than no optimization.
+
+**Adversarial Validation Approach:**
+
+Create test cases with **known ground truth** and verify the assessor agrees:
+
+1. **Must-fail cases**: Deliberately broken responses (diagnosis, dropped topics, formulaic patterns)
+2. **Must-pass cases**: Good responses that should not be penalized
+
+**Critical: Tests must be realistic.** Short 1-2 turn adversarial cases don't capture:
+- **Context fatigue**: Assessor missing issues buried in turn 23 of a 50-turn transcript
+- **Cumulative patterns**: CP4/CP5 are about patterns across many turns, not single instances
+- **History effects**: MT4/MT5/MT7 only matter when there's substantial history to reference
+
+**Realistic adversarial test structure:**
+```python
+# BAD: Unrealistic short case
+{"turns": [(user, bad_response)]}  # 1 turn - not how real failures happen
+
+# GOOD: Embedded in realistic context
+{
+    "turns": [
+        # 20 turns of good conversation...
+        (user_21, good_response),
+        (user_22, good_response),
+        (user_23, BAD_RESPONSE),  # <-- Failure buried here
+        (user_24, good_response),
+        # ... more turns
+    ],
+    "must_fail": ["MT1"],  # Should catch the dropped topic in turn 23
+}
+```
+
+**When to do this:** After pipeline is working end-to-end, if pass rates seem suspicious (too high or too low) or qualitative review shows assessor missing obvious issues.
+
+**Implementation:** `tests/test_assessor_adversarial.py` with realistic long-context cases.
+
+---
+
 ## Success Metrics
 
 | Metric | Target |
