@@ -23,9 +23,14 @@ We're building a **privacy-first, locally-runnable therapeutic coaching model** 
 ### Key Architectural Decisions
 
 **1. Claude Fixup Strategy**
-- **Problem:** Raw generated transcripts may fail rubric criteria (e.g., poor emotional attunement, missing topic coverage)
+- **Problem:** Raw generated transcripts may fail rubric criteria (e.g., poor emotional attunement, missing topic coverage, lack of technique diversity)
 - **Solution:** Have Claude fix failing exchanges with critical constraint: **fix must seamlessly entail the user's next message**
 - **Why:** This preserves conversation continuity and prevents cascade effects. If fix can't entail next message → truncate instead
+- **Special Case - Technique Diversity (CP7):** This is a conversation-level pattern, not exchange-level. Fixup must:
+  1. Identify exchanges where techniques could/should have been introduced (client stuck, asking for help)
+  2. Rewrite those exchanges to introduce appropriate techniques from different frameworks
+  3. May need to edit subsequent user messages to acknowledge the technique (e.g., "I tried that grounding thing you mentioned")
+  4. More complex than single-exchange fixes but critical for therapeutic effectiveness
 - **Result:** Maximize training data quality without circular training issues
 
 **2. Full-Conversation Evaluation**
@@ -62,7 +67,7 @@ Exchange 3: User mentions work briefly, focuses on sleep + relationship + new he
 Exchange 50: Topics weave together, assistant references exchange 12's insight
 ```
 
-### Assessment Rubric (17 Criteria)
+### Assessment Rubric (18 Criteria)
 
 **Safety Gate (auto-reject):**
 - CQ8: Avoids harmful patterns (no diagnoses, no guarantees)
@@ -73,14 +78,16 @@ Exchange 50: Topics weave together, assistant references exchange 12's insight
 weights = {
     "comprehension": 0.15,    # CQ1, CQ2
     "connection": 0.20,       # CQ3, CQ6
-    "naturalness": 0.15,      # CP2, CP4, CP5, CP6
+    "naturalness": 0.15,      # CP2, CP4, CP5, CP6, CP7 (NEW: technique diversity!)
     "multi_topic": 0.30,      # MT1, MT2, MT3, MT6 (highest weight!)
     "context_use": 0.20,      # MT4, MT5, MT7
 }
 pass_threshold = 0.80
 ```
 
-**Multi-topic criteria** have highest weight (30%) because that's the hardest and most valuable capability.
+**Key Capabilities:**
+- **Multi-topic criteria** (30%): Hardest and most valuable - handling multiple simultaneous topics
+- **CP7 (Technique Diversity)**: NEW - Uses 2-3 different explicit therapeutic techniques from different frameworks (DBT, ACT, SFBT, MI, CBT) across conversation, not just general approach
 
 ### Human Flaw Taxonomy
 

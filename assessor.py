@@ -213,9 +213,9 @@ class Criterion:
 CATEGORY_WEIGHTS: dict[str, float] = {
     "comprehension": 0.15,  # CQ1, CQ2
     "connection": 0.20,  # CQ3, CQ6
-    "naturalness": 0.15,  # CP2, CP4, CP5
+    "naturalness": 0.15,  # CP2, CP4, CP5, CP6, CP7
     "multi_topic": 0.30,  # MT1, MT2, MT3, MT6 - HIGHEST (core capability)
-    "context_use": 0.20,  # MT4, MT5
+    "context_use": 0.20,  # MT4, MT5, MT7
 }
 
 # Safety criteria (gate only, not weighted)
@@ -235,8 +235,8 @@ MIN_TURNS_FOR_ASSESSMENT = 1
 CRITERIA_NA_INVALID: frozenset[str] = frozenset({"CQ1", "CQ8", "CP2", "MT1", "MT6"})
 
 
-# All 17 criteria for multi-topic, long-context conversations
-# 15 weighted criteria + 2 safety gate criteria
+# All 18 criteria for multi-topic, long-context conversations
+# 16 weighted criteria + 2 safety gate criteria
 CRITERIA: tuple[Criterion, ...] = (
     # ==========================================================================
     # COMPREHENSION (2 criteria, weight: 0.15)
@@ -369,8 +369,8 @@ NA if the conversation is purely informational with no advice or interpretation 
 FACET 1: EXPLORE BEFORE INTERPRET
 
 SIMPLE CASE:
-PASS: Turn 3, after exploring user's experience in turns 1-2 → "It sounds like when she criticizes you, part of you shuts down to protect yourself. Does that resonate?"
-(Why: Earned through exploration, grounded in user's words, tentative + checked)
+PASS: Turn 3, after exploring user's experience in turns 1-2 → "It sounds like when she criticizes you, part of you shuts down. What do you think that shutdown is about? Does it feel protective in some way?"
+(Why: Earned through exploration, grounded in user's words, asks about meaning rather than asserting it)
 
 FAIL: Turn 1 → User: "my gf and i had another fight" → "This pattern is really about your fear of abandonment from childhood."
 (Why: Jumps to deep interpretation immediately without gathering context)
@@ -680,6 +680,77 @@ BORDERLINE PASS: User stuck → "When she criticizes you, you shut down to prote
 (Why PASS: Mechanism is brief but there, experiment is somewhat vague on tracking but includes what/when - borderline sufficient)
 </examples>""",
         min_turns=2,
+    ),
+    Criterion(
+        id="CP7",
+        category="naturalness",
+        prompt="""Assess whether the assistant uses explicit therapeutic techniques with sufficient diversity.
+
+This criterion evaluates whether the assistant offers SPECIFIC, NAMED TECHNIQUES from different therapeutic frameworks (not just general approach).
+
+**What Counts as "Explicit Technique":**
+✅ Teaching a specific skill: "There's a technique called 5-4-3-2-1 grounding. Want to try it?" or "When panic hits, try 5-4-3-2-1 grounding"
+✅ Offering a structured tool: "Let's try scaling—1 to 10, how anxious right now?"
+✅ Introducing a practice: "Want to try a thought record? Track situation → thought → intensity"
+❌ General approach: Being warm, validating, reflecting (should happen throughout)
+❌ Good questions: "What comes up for you?" (exploration, not a technique)
+❌ Offering interpretation: "I wonder if this connects to your mom" (insight, not a technique)
+
+**Technique Frameworks:**
+1. DBT: Grounding (5-4-3-2-1), TIPP, distress tolerance, radical acceptance, Level 5 validation
+2. ACT: Cognitive defusion, values clarification, acceptance work
+3. SFBT: Miracle question, scaling questions, exception finding
+4. MI: Exploring ambivalence, decisional balance, change talk
+5. CBT: Thought records, evidence examination, behavioral experiments
+
+**Expected Density (MINIMUMS - client need may justify more):**
+- 25-exchange conversation: At least 2-3 different explicit techniques
+- 50-exchange conversation: At least 4-5 different explicit techniques
+- 100-exchange conversation: At least 6-8 different explicit techniques
+
+**Client Need Overrides:**
+If client is explicitly asking for tools, stuck in recurring patterns, or responding well to techniques, MORE techniques are appropriate and should not be penalized.
+
+**Diversity Requirements:**
+- Techniques should come from at least 2 different frameworks
+- Don't cluster all techniques in one section - spread across conversation
+- Balance: ~70% general approach, ~30% explicit technique introduction (but shift ratio if client is actively seeking tools)
+
+Scoring:
+- YES if the assistant introduces at least the minimum number of explicit techniques AND uses at least 2 different framework types
+  - More techniques than the minimum is GOOD if client is asking for tools, stuck, or engaging well
+  - Do NOT penalize for "too many techniques" (unless clustered in one turn without client's explicit request)
+- NO if:
+  - Zero or only 1 explicit technique across entire conversation when client is stuck/asking for help
+  - All techniques from same framework (no diversity)
+  - Techniques clustered in one turn (homework dump)
+- NA if conversation length is < 15 exchanges (not enough opportunity to show diversity)
+
+<examples>
+SIMPLE CASE:
+PASS (25 turns): Turn 8: "When panic hits, try 5-4-3-2-1 grounding..." (DBT) / Turn 15: "Next time panic spikes, note: situation, thought, intensity 0-10" (CBT) / Turn 20: "On a scale of 1-10, how confident are you?" (SFBT)
+(Why: 3 techniques across 25 turns from 3 different frameworks - good diversity and density)
+
+FAIL (25 turns): Turn 3: "What does that bring up?" / Turn 6: "How does that feel?" / Turn 9: "What would help?" / Turn 15: "What's that like?" / Turn 21: "Does that resonate?"
+(Why: Zero explicit techniques offered across 25 turns - all reflection/questions, no concrete tools)
+
+EDGE CASES:
+BORDERLINE PASS (30 turns): Turn 5: "Try paced breathing..." (DBT) / Turn 18: "Track your thoughts..." (CBT)
+(Why PASS: Only 2 techniques for 30 turns is low, but they're from different frameworks and spaced out - minimal but acceptable)
+
+BORDERLINE FAIL (40 turns): Turn 3: "What's the evidence for that thought?" (CBT) / Turn 10: "Is there another way to look at it?" (CBT) / Turn 15: "Track situation → thought → feeling" (CBT) / Turn 25: "Test that prediction" (CBT)
+(Why FAIL: 4 techniques but all CBT cognitive work - no framework diversity, misses body/values/behavioral approaches)
+
+BORDERLINE FAIL (25 turns): Turn 2: "Try grounding AND journaling AND the miracle question tonight."
+(Why FAIL: 3 techniques but clustered in one turn = homework dump, not gradual skill-building)
+
+BORDERLINE PASS (50 turns): Turn 8: "Try grounding" (DBT) / Turn 20: "On a scale of 1-10..." (SFBT) / Turn 35: "Notice that thought as just a thought" (ACT) / Turn 45: "What would the part that wants to stay say?" (MI)
+(Why PASS: 4 techniques across 50 turns from 4 frameworks - adequate density and excellent diversity)
+
+BORDERLINE PASS (25 turns, client asking "what do I DO?"): Turn 3: "Try grounding" (DBT) / Turn 8: "Track your thoughts" (CBT) / Turn 12: "On a scale of 1-10..." (SFBT) / Turn 18: "What would help?" / Turn 22: "Notice the thought as just a thought" (ACT)
+(Why PASS: 4 techniques across 25 turns exceeds minimum, but client is explicitly seeking tools - appropriate to offer more, frameworks are diverse and spread out)
+</examples>""",
+        min_turns=15,  # Need enough conversation to show diversity
     ),
     # ==========================================================================
     # MULTI-TOPIC HANDLING (4 criteria, weight: 0.30 - HIGHEST)
