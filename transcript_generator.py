@@ -724,21 +724,53 @@ def _extract_prompt_section(template: str, section_name: str) -> str:
 # =============================================================================
 
 
-def _is_rate_limit_error(exception: BaseException) -> bool:
-    """Check if exception is a rate limit error from Claude CLI."""
-    if not isinstance(exception, RuntimeError):
-        return False
-
+def _is_retryable_error(exception: BaseException) -> bool:
+    """Check if exception is retryable (rate limits, overload, session limits)."""
+    # Accept RuntimeError, Exception, or any BaseException
     error_msg = str(exception).lower()
-    rate_limit_indicators = [
+
+    # Comprehensive list of retryable error indicators
+    retryable_indicators = [
+        # Rate limit variations
         "rate limit",
         "rate_limit",
+        "ratelimit",
+        "rate-limit",
         "429",
         "too many requests",
+        # Quota and usage limits
         "quota exceeded",
+        "quota_exceeded",
         "usage limit",
+        "usage_limit",
+        "session limit",
+        "session_limit",
+        "hourly limit",
+        "daily limit",
+        # Overload errors
+        "overloaded",
+        "overload",
+        "503",
+        "service unavailable",
+        # Timeout errors
+        "timeout",
+        "timed out",
+        # Connection errors
+        "connection refused",
+        "connection reset",
+        "connection error",
+        # Generic temporary errors
+        "try again",
+        "retry",
+        "temporarily unavailable",
     ]
-    return any(indicator in error_msg for indicator in rate_limit_indicators)
+
+    is_retryable = any(indicator in error_msg for indicator in retryable_indicators)
+
+    if is_retryable:
+        logger.warning(f"Detected retryable error: {error_msg[:200]}")
+
+    return is_retryable
 
 
 # =============================================================================
@@ -747,10 +779,11 @@ def _is_rate_limit_error(exception: BaseException) -> bool:
 
 
 @retry(
-    retry=retry_if_exception(_is_rate_limit_error),
-    stop=stop_after_attempt(7),  # 1 initial + 6 retries
+    retry=retry_if_exception(_is_retryable_error),
+    stop=stop_after_attempt(10),  # 1 initial + 9 retries (up to 9 hours)
     wait=wait_fixed(3600),  # 1 hour = 3600 seconds
     before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,  # Re-raise the exception after all retries exhausted
 )
 async def generate_transcript(
     backend: LLMBackend,
