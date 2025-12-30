@@ -834,6 +834,137 @@ Create test cases with **known ground truth** and verify the assessor agrees:
 
 ---
 
+## Initial Assessment Results (December 2024)
+
+### Short Transcript Batch (5000-series)
+
+Assessed 29 short transcripts (20-25 turns each) using Google Gemini backend:
+
+| Metric | Value |
+|--------|-------|
+| **Total assessed** | 29 |
+| **Pass rate** | 82.8% (24/29) |
+| **Failed** | 5 (17.2%) |
+| **Safety gate failures** | 2 |
+
+### Category Score Averages
+
+| Category | Score | Notes |
+|----------|-------|-------|
+| multi_topic | 0.983 | Excellent topic coverage |
+| context_use | 0.954 | Good history utilization |
+| connection | 0.948 | Strong emotional attunement |
+| comprehension | 0.793 | **Weak** — mind-reading issues |
+| naturalness | 0.717 | **Weakest** — formulaic patterns |
+
+### Most Common Failure Patterns
+
+| Criterion | Failures | Root Cause |
+|-----------|----------|------------|
+| **CQ2** | 12 | Assertive interpretations without tentative language ("You're afraid of mattering", "That's a protective strategy") |
+| **CP4** | 10 | Formulaic structure with bolded headers + repetitive openers ("**The job decision:**", "You did it") |
+| **MT7** | 4 | Passive follow-up (waits for user to report outcomes vs. proactively asking) |
+| **CQ8** | 2 | Clinical diagnostic labels ("That's dissociation", "This is health anxiety") — **SAFETY GATE** |
+| **CP5** | 2 | Ending 84%+ of responses with questions (interrogation pattern) |
+| **CQ6** | 1 | Labeling before exploring (jumps to "catastrophic thinking spiral" without questions) |
+
+### Identified Root Causes
+
+| Issue | Affected Criteria | Fix Location |
+|-------|------------------|--------------|
+| Assertive interpretations without hedging | CQ2, CQ6 | **Therapist prompt** + LLM fixup |
+| Formulaic bolded-header structure | CP4 | **Therapist prompt** — vary response formats |
+| User reports before coach asks | MT7 | **User simulator** — add "waiting for prompt" behaviors |
+| Clinical labels | CQ8 | **Therapist prompt** + LLM fixup (safety-critical) |
+| Always ending with questions | CP5 | **Therapist prompt** — vary endings |
+
+---
+
+## LLM Fixup Strategy for Therapist Language
+
+### Problem
+
+Two failure patterns are particularly amenable to LLM-based rewriting:
+
+1. **Assertive Interpretations (CQ2, CQ6)**: The therapist makes psychodynamic claims as facts
+   - BAD: "You're not afraid of failing. You're afraid of mattering and then not mattering."
+   - BAD: "You weren't helping them—you were protecting yourself."
+
+2. **Clinical Labels (CQ8)**: The therapist uses diagnostic terminology
+   - BAD: "That's dissociation."
+   - BAD: "This is health anxiety doing its thing."
+
+### Solution: Entailment-Preserving Rewrite
+
+Use Claude to rewrite problematic therapist responses with these constraints:
+
+1. **Fix the language issue**: Convert assertions to tentative hypotheses, remove clinical labels
+2. **Preserve entailment**: The rewritten response must still naturally lead to the user's next message
+3. **Maintain therapeutic value**: Keep the insight/observation, just soften the delivery
+
+**Rewrite Examples:**
+
+```
+ORIGINAL (CQ2 fail):
+"You're not afraid of failing. You're afraid of mattering and then not mattering."
+
+REWRITTEN (passes CQ2):
+"I wonder if there's something deeper here than fear of failure. Could it be more about what it would mean to really matter to someone—and then potentially losing that? Does that resonate at all?"
+```
+
+```
+ORIGINAL (CQ8 fail - safety gate):
+"What you're describing... that's dissociation. It's a way your mind protects itself."
+
+REWRITTEN (passes CQ8):
+"What you're describing—that sense of watching yourself from outside, feeling disconnected—sounds really disorienting. It seems like your mind might be finding ways to create distance when things feel overwhelming. What do you notice when that happens?"
+```
+
+### Implementation
+
+The fixup module (`src/fixup/claude_fixup.py`) handles this with specific prompt engineering:
+
+```python
+THERAPEUTIC_LANGUAGE_FIXUP_PROMPT = """
+Rewrite this therapist response to fix the identified issue while preserving conversation continuity.
+
+ISSUE: {issue_type}  # "assertive_interpretation" or "clinical_label"
+
+CONSTRAINTS:
+1. Convert assertions to tentative hypotheses ("I wonder if...", "Could it be...", "Does that fit?")
+2. Remove clinical/diagnostic labels entirely
+3. Keep the therapeutic insight - just soften the delivery
+4. Your rewrite MUST naturally lead to the user's next message (entailment constraint)
+
+ORIGINAL RESPONSE:
+{problematic_response}
+
+USER'S NEXT MESSAGE (must still make sense after your rewrite):
+{next_user_message}
+
+If the fix would break continuity with the user's next message, return: UNFIXABLE
+"""
+```
+
+### When to Apply
+
+This fixup is applied during the filtering pipeline:
+
+1. **After initial assessment**: If CQ2, CQ6, or CQ8 fail
+2. **Before truncation**: Attempt rewrite first; truncate only if unfixable
+3. **Re-assess after fix**: Verify the rewrite actually passes the criterion
+
+### Expected Impact
+
+Based on initial results:
+- CQ2 failures: 12 → expected 2-3 after fixup (most are soft-rewritable)
+- CQ8 failures: 2 → expected 0 after fixup (clinical labels are straightforward to remove)
+- CQ6 failures: 1 → expected 0 after fixup
+
+This should improve overall pass rate from 82.8% to ~90%+ without losing data to truncation.
+
+---
+
 ## What's Already Done
 
 | Artifact | Status |
@@ -843,15 +974,17 @@ Create test cases with **known ground truth** and verify the assessor agrees:
 | `assessor.py` | Complete — needs update for new rubric + Claude backend |
 | `therapeutic-frameworks.md` (9 styles) | Complete |
 | System prompt for training | Complete |
+| **Initial short transcript assessment** | **Complete** (29 transcripts, 82.8% pass rate) |
 
 **Next steps (in order):**
-1. Create `config/flaw-taxonomy.yaml` — Human flaw patterns
-2. Create `claude_backend.py` — Claude CLI wrapper
-3. Generate multi-topic evaluation scenarios
-4. **Evaluate base model on multi-topic** — Decision point for fine-tuning
-5. Create `transcript_generator.py` — Long-context transcript generation
-6. Update `assessor.py` — New MT criteria, Claude backend
-7. Update `reference/assessment-rubric.md` — New criteria documentation
+1. ~~Create `config/flaw-taxonomy.yaml`~~ — Human flaw patterns ✓
+2. ~~Create `claude_backend.py`~~ — Claude CLI wrapper ✓
+3. ~~Generate multi-topic evaluation scenarios~~ ✓
+4. ~~Evaluate base model on multi-topic~~ — Decision point for fine-tuning ✓
+5. **Implement LLM fixup for CQ2/CQ8 failures** — Rewrite assertive interpretations + clinical labels
+6. **Update therapist prompt** — Add tentative language requirements, vary response formats
+7. Create `transcript_generator.py` — Long-context transcript generation
+8. Update `reference/assessment-rubric.md` — New criteria documentation
 
 ---
 

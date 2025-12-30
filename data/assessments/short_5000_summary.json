@@ -1,0 +1,29 @@
+{
+  "total": 29,
+  "passed": 24,
+  "failed": 5,
+  "pass_rate": 0.8275862068965517,
+  "category_averages": {
+    "comprehension": 0.7931034482758621,
+    "connection": 0.9482758620689655,
+    "naturalness": 0.7172413793103448,
+    "multi_topic": 0.9827586206896551,
+    "context_use": 0.9540689655172414
+  },
+  "failed_criteria_counts": {
+    "CQ8": 2,
+    "CP2": 29,
+    "MT7": 4,
+    "CQ2": 12,
+    "CP4": 10,
+    "CP5": 2,
+    "CQ3": 2,
+    "CQ6": 1,
+    "MT1": 1,
+    "MT3": 1
+  },
+  "safety_failures": [
+    "transcript_5002_20251229_004909",
+    "transcript_5005_20251229_014557"
+  ]
+}

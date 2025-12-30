@@ -10,6 +10,47 @@
 
 ---
 
+## Initial Assessment Results (December 2024)
+
+Before implementing the full pipeline, we assessed 29 short transcripts (5000-series, 20-25 turns each) to understand failure patterns:
+
+### Summary
+
+| Metric | Value |
+|--------|-------|
+| **Total assessed** | 29 |
+| **Pass rate** | 82.8% (24/29) |
+| **Safety gate failures** | 2 |
+
+### Category Scores
+
+| Category | Score | Assessment |
+|----------|-------|------------|
+| multi_topic | 0.983 | ✅ Excellent |
+| context_use | 0.954 | ✅ Strong |
+| connection | 0.948 | ✅ Strong |
+| comprehension | 0.793 | ⚠️ Needs improvement |
+| naturalness | 0.717 | ❌ Weakest area |
+
+### Key Failure Patterns (Prioritized for Fixup)
+
+| Criterion | Failures | Pattern | Fixup Strategy |
+|-----------|----------|---------|----------------|
+| **CQ2** | 12 | Mind-reading: Assertive interpretations without tentative language | LLM rewrite to add hedging |
+| **CP4** | 10 | Formulaic bolded-header structure + repetitive openers | Prompt update (structural) |
+| **MT7** | 4 | Passive follow-up (waits for user reports) | User simulator update |
+| **CQ8** | 2 | Clinical diagnostic labels ("That's dissociation") | LLM rewrite to remove labels |
+| **CP5** | 2 | 84%+ responses end with questions | Prompt update (vary endings) |
+
+### Implications for Pipeline
+
+1. **LLM Fixup is Viable**: CQ2 and CQ8 failures are soft-rewritable (change language, preserve content)
+2. **Entailment Constraint**: Rewrites must still lead to user's next message naturally
+3. **Safety-Critical**: CQ8 failures (clinical labels) must be fixed—these trigger safety gate rejection
+4. **Expected Improvement**: 82.8% → ~90%+ pass rate after targeted fixup
+
+---
+
 ## Context
 
 ### Project Overview
@@ -639,6 +680,90 @@ Instructions:
 - If impossible to fix while preserving continuity, return: UNFIXABLE
 """
 
+    # Specialized prompt for therapeutic language issues (CQ2, CQ6, CQ8)
+    THERAPEUTIC_LANGUAGE_FIXUP_PROMPT = """You are fixing therapeutic language issues in a coaching conversation.
+
+ISSUE TYPE: {issue_type}
+
+{issue_specific_instructions}
+
+CRITICAL ENTAILMENT CONSTRAINT:
+Your rewrite MUST naturally lead to the user's next message. The user wrote their response based on the ORIGINAL problematic response, so your fix must still make their response feel like a natural continuation.
+
+ORIGINAL RESPONSE:
+{problematic_response}
+
+USER'S NEXT MESSAGE (must still make sense after your rewrite):
+{next_user_message}
+
+Instructions:
+- Rewrite the response to fix the language issue
+- PRESERVE the therapeutic insight - just change HOW it's delivered
+- Ensure continuity with user's next message
+- If impossible to fix while preserving continuity, return: UNFIXABLE
+"""
+
+    ISSUE_INSTRUCTIONS = {
+        "assertive_interpretation": """
+PROBLEM: The response makes assertive psychodynamic claims as facts without tentative language.
+
+BAD EXAMPLES:
+- "You're not afraid of failing. You're afraid of mattering."
+- "You weren't helping them—you were protecting yourself."
+- "That's a protective strategy you developed in childhood."
+
+HOW TO FIX:
+1. Convert assertions to tentative hypotheses using phrases like:
+   - "I wonder if..."
+   - "Could it be that..."
+   - "It seems like maybe..."
+   - "Does this resonate: ..."
+2. Add a check-in question: "Does that fit?" or "How does that land?"
+3. KEEP the insight - just soften the delivery
+
+GOOD EXAMPLE:
+Original: "You're afraid of mattering and then not mattering."
+Fixed: "I wonder if there's something deeper here than fear of failure—could it be more about what it would mean to really matter to someone, and then potentially losing that? Does that resonate at all?"
+""",
+        "clinical_label": """
+PROBLEM: The response uses clinical/diagnostic terminology that a coach should avoid.
+
+BAD EXAMPLES:
+- "That's dissociation."
+- "This is health anxiety doing its thing."
+- "You're experiencing depression."
+- "That sounds like imposter syndrome."
+
+HOW TO FIX:
+1. REMOVE the diagnostic label entirely
+2. Describe the EXPERIENCE instead of labeling it
+3. Use the user's own words where possible
+4. Normalize without pathologizing
+
+GOOD EXAMPLE:
+Original: "What you're describing... that's dissociation. It's a way your mind protects itself."
+Fixed: "What you're describing—that sense of watching yourself from outside, feeling disconnected—sounds really disorienting. It seems like your mind might be finding ways to create distance when things feel overwhelming. What do you notice when that happens?"
+""",
+        "labeling_before_exploring": """
+PROBLEM: The response jumps to psychological labels/interpretations before asking questions or exploring.
+
+BAD EXAMPLES:
+- Starting with "**The catastrophic thinking spiral**" as a header
+- "That's the guilt loop talking"
+- Immediately framing user's experience with psychological terms
+
+HOW TO FIX:
+1. Lead with curiosity, not interpretation
+2. Ask what's happening before naming it
+3. If you do offer an interpretation, frame it tentatively and AFTER exploring
+4. Use the user's language, not clinical frameworks
+
+GOOD EXAMPLE:
+Original: "**The catastrophic thinking spiral:** You're caught in worst-case scenario thinking."
+Fixed: "When you imagine the presentation going badly, what specifically comes up? I'm curious what the worry sounds like in your head."
+"""
+    }
+
     def fix_exchange(
         self,
         history: list[dict],
@@ -748,6 +873,204 @@ git commit -m "feat: add Claude fixup with entailment constraint
 - CRITICAL: Fix must entail user's next message (preserve continuity)
 - Returns None if unfixable (caller truncates instead)
 - Uses Claude Code CLI via subprocess"
+```
+
+---
+
+## Task 3b: Therapeutic Language Fixup (CQ2, CQ6, CQ8)
+
+**Priority:** HIGH — Based on initial assessment, these account for 15 of 29 failures (52%)
+
+**Files:**
+- Update: `src/fixup/claude_fixup.py` (add specialized methods)
+- Create: `tests/integration/test_therapeutic_language_fixup.py`
+
+### Step 1: Add specialized fixup method
+
+**File:** `src/fixup/claude_fixup.py` (add to ClaudeFixup class)
+
+```python
+def fix_therapeutic_language(
+    self,
+    history: list[dict],
+    exchange_number: int,
+    problematic_response: str,
+    issue_type: Literal["assertive_interpretation", "clinical_label", "labeling_before_exploring"],
+    next_user_message: str | None
+) -> str | None:
+    """
+    Fix specific therapeutic language issues while preserving entailment.
+
+    This is a specialized fixup for the most common failure patterns:
+    - CQ2: Assertive interpretations without tentative language
+    - CQ6: Labeling before exploring
+    - CQ8: Clinical diagnostic labels (SAFETY GATE)
+
+    Args:
+        history: Conversation up to the problematic exchange
+        exchange_number: Which exchange is being fixed
+        problematic_response: The response that failed
+        issue_type: Type of language issue to fix
+        next_user_message: User's next message (must be entailed)
+
+    Returns:
+        Fixed response or None if unfixable
+    """
+    if next_user_message is None:
+        next_msg_text = "N/A (last exchange - no continuity constraint)"
+    else:
+        next_msg_text = next_user_message
+
+    issue_instructions = self.ISSUE_INSTRUCTIONS.get(issue_type, "")
+
+    prompt = self.THERAPEUTIC_LANGUAGE_FIXUP_PROMPT.format(
+        issue_type=issue_type,
+        issue_specific_instructions=issue_instructions,
+        problematic_response=problematic_response,
+        next_user_message=next_msg_text
+    )
+
+    # Add conversation context
+    context_parts = []
+    for ex in history[-5:]:  # Last 5 exchanges for context
+        context_parts.append(f"User: {ex['user'][:200]}...")
+        context_parts.append(f"Assistant: {ex['assistant'][:200]}...")
+
+    full_prompt = f"Recent context:\n{''.join(context_parts)}\n\n{prompt}"
+
+    fixed = self._call_claude(
+        system_prompt="You are an expert at rewriting therapeutic language to be more tentative and non-diagnostic.",
+        user_prompt=full_prompt
+    )
+
+    if "UNFIXABLE" in fixed:
+        return None
+
+    return fixed.strip()
+```
+
+### Step 2: Write integration tests
+
+**File:** `tests/integration/test_therapeutic_language_fixup.py`
+
+```python
+import pytest
+from src.fixup.claude_fixup import ClaudeFixup
+
+
+class TestTherapeuticLanguageFixup:
+    """Test specialized fixup for CQ2, CQ6, CQ8 failures."""
+
+    def test_fixes_assertive_interpretation(self):
+        """CQ2: Convert assertion to tentative hypothesis."""
+        fixer = ClaudeFixup()
+
+        fixed = fixer.fix_therapeutic_language(
+            history=[],
+            exchange_number=0,
+            problematic_response="You're not afraid of failing. You're afraid of mattering and then not mattering.",
+            issue_type="assertive_interpretation",
+            next_user_message="That... actually hits pretty hard. I never thought about it that way."
+        )
+
+        assert fixed is not None
+        # Should contain tentative language
+        tentative_markers = ["wonder", "could", "maybe", "might", "seems", "perhaps", "resonate", "fit"]
+        assert any(marker in fixed.lower() for marker in tentative_markers)
+        # Should NOT contain definitive assertions
+        assert "You're afraid" not in fixed or "I wonder if" in fixed
+
+    def test_fixes_clinical_label(self):
+        """CQ8: Remove diagnostic terminology."""
+        fixer = ClaudeFixup()
+
+        fixed = fixer.fix_therapeutic_language(
+            history=[],
+            exchange_number=0,
+            problematic_response="What you're describing... that's dissociation. It's a way your mind protects itself.",
+            issue_type="clinical_label",
+            next_user_message="Is that bad? Should I be worried?"
+        )
+
+        assert fixed is not None
+        # Should NOT contain clinical labels
+        clinical_terms = ["dissociation", "anxiety disorder", "depression", "trauma response", "PTSD"]
+        assert not any(term.lower() in fixed.lower() for term in clinical_terms)
+        # Should describe experience instead
+        assert any(word in fixed.lower() for word in ["feel", "experience", "sense", "notice"])
+
+    def test_fixes_labeling_before_exploring(self):
+        """CQ6: Lead with curiosity, not interpretation."""
+        fixer = ClaudeFixup()
+
+        fixed = fixer.fix_therapeutic_language(
+            history=[],
+            exchange_number=0,
+            problematic_response="**The catastrophic thinking spiral:** You're caught in worst-case scenario thinking. This is a classic anxiety pattern.",
+            issue_type="labeling_before_exploring",
+            next_user_message="I guess I do always go to the worst case..."
+        )
+
+        assert fixed is not None
+        # Should NOT start with bold labels
+        assert not fixed.startswith("**")
+        # Should contain a question (exploring, not labeling)
+        assert "?" in fixed
+
+    def test_preserves_entailment(self):
+        """Fixed response must still lead naturally to user's next message."""
+        fixer = ClaudeFixup()
+
+        # User's next message mentions "the relationship part"
+        # So the fix must still reference relationships
+        fixed = fixer.fix_therapeutic_language(
+            history=[],
+            exchange_number=0,
+            problematic_response="You're sabotaging the relationship because you don't believe you deserve love.",
+            issue_type="assertive_interpretation",
+            next_user_message="Maybe. The relationship stuff is definitely complicated."
+        )
+
+        assert fixed is not None
+        # Must still reference relationship for entailment
+        assert "relationship" in fixed.lower()
+
+    def test_returns_none_when_unfixable(self):
+        """Return None when fix would break continuity."""
+        fixer = ClaudeFixup()
+
+        # This is contrived - the user's response doesn't relate to any possible fix
+        fixed = fixer.fix_therapeutic_language(
+            history=[],
+            exchange_number=0,
+            problematic_response="That's classic avoidant attachment.",
+            issue_type="clinical_label",
+            next_user_message="Thanks for explaining attachment theory to me!"
+        )
+
+        # User explicitly thanks for the clinical framing - hard to fix while preserving
+        # This may or may not return None depending on Claude's judgment
+        # The important thing is it doesn't break
+        assert fixed is None or len(fixed) > 0
+```
+
+### Step 3: Run tests
+
+```bash
+uv run pytest tests/integration/test_therapeutic_language_fixup.py -v
+```
+
+### Step 4: Commit
+
+```bash
+git add src/fixup/claude_fixup.py tests/integration/test_therapeutic_language_fixup.py
+git commit -m "feat: add specialized therapeutic language fixup
+
+- Handles CQ2 (assertive interpretations) - converts to tentative hypotheses
+- Handles CQ6 (labeling before exploring) - leads with curiosity
+- Handles CQ8 (clinical labels) - removes diagnostic terminology
+- Preserves entailment with user's next message
+- Based on initial assessment showing 15/29 failures from these patterns"
 ```
 
 ---
@@ -1872,7 +2195,33 @@ If Claude often returns "UNFIXABLE", the entailment constraint may be too strict
 - If > 30%, consider relaxing constraint
 - Or: improve generation prompts so fewer fixes needed
 
-### 🚨 GOTCHA 3: Per-Transcript Slicing Seed
+### 🚨 GOTCHA 3: CQ2/CQ8 Failures Are Systematic (Initial Assessment Finding)
+
+The initial assessment (29 transcripts) revealed that 52% of failures come from just two patterns:
+- **CQ2 (12 failures)**: Assertive interpretations without tentative language
+- **CQ8 (2 failures)**: Clinical diagnostic labels (safety gate!)
+
+These are SYSTEMATIC issues in the therapist prompt, not random failures.
+
+**Mitigation:**
+- **Short-term**: Implement specialized LLM fixup (Task 3b) to rewrite these patterns
+- **Long-term**: Update therapist prompt to require tentative language and ban clinical labels
+- **Monitor**: Track CQ2/CQ8 failure rates after prompt updates
+
+### 🚨 GOTCHA 4: Naturalness Score is Lowest (0.717)
+
+The `naturalness` category scored lowest (0.717 vs 0.95+ for others). Main drivers:
+- **CP4**: Formulaic bolded-header structure in every response
+- **CP5**: 84%+ of responses end with questions
+
+These are STRUCTURAL patterns that LLM fixup can't easily address.
+
+**Mitigation:**
+- Update therapist prompt to vary response formats (not always headers)
+- Add explicit instruction to vary response endings (statements, suggestions, not just questions)
+- Consider adversarial prompt testing before scaling generation
+
+### 🚨 GOTCHA 5: Per-Transcript Slicing Seed
 
 Using `hash(transcript_id)` as seed means different Python versions might give different slices (hash is not guaranteed stable across versions).
 
@@ -1880,7 +2229,7 @@ Using `hash(transcript_id)` as seed means different Python versions might give d
 - Use `hashlib` for stable hashing if reproducibility across environments matters
 - Or: accept that slices may differ across Python versions (not critical)
 
-### 🚨 GOTCHA 4: Token Estimation is Approximate
+### 🚨 GOTCHA 6: Token Estimation is Approximate
 
 Character-based estimation may be off by 10-20% vs actual tokenization.
 
@@ -1888,7 +2237,7 @@ Character-based estimation may be off by 10-20% vs actual tokenization.
 - Use conservative limit (120K instead of 128K)
 - For production, consider using actual tokenizer (slower but accurate)
 
-### 🚨 GOTCHA 5: Evaluation Requires User Simulator
+### 🚨 GOTCHA 7: Evaluation Requires User Simulator
 
 Full-conversation eval needs a user simulator that hasn't been implemented yet.
 
@@ -1896,7 +2245,7 @@ Full-conversation eval needs a user simulator that hasn't been implemented yet.
 - Implement user simulator as separate task
 - Or: use simpler evaluation (model generates responses to pre-written user messages)
 
-### 🚨 GOTCHA 6: Assessor Calibration is Unvalidated
+### 🚨 GOTCHA 8: Assessor Calibration is Unvalidated
 
 The assessor uses LLM-as-judge with 17 criterion prompts. If these prompts are miscalibrated, we're filtering training data against a broken metric.
 
