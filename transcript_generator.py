@@ -80,6 +80,11 @@ WRITING_STYLES = [
 TRAJECTORIES = ["volatile", "improving", "deteriorating", "stable"]
 TRAJECTORY_WEIGHTS = [0.66, 0.11, 0.11, 0.12]  # volatile most common
 
+# Receptivity levels - how open the user is to the therapeutic process
+# Self-selected app users are generally receptive, but with realistic variation
+RECEPTIVITY_LEVELS = ["high", "medium", "low"]
+RECEPTIVITY_WEIGHTS = [0.25, 0.55, 0.20]  # most users are medium receptivity
+
 
 @dataclass
 class Persona:
@@ -94,6 +99,7 @@ class Persona:
     topic_seeds: list[TopicSeed]
     flaw_patterns: list[dict[str, str]] | None  # None = clear communicator
     trajectory: str  # volatile, improving, deteriorating, stable
+    receptivity: str  # high, medium, low - openness to therapeutic process
     seed: int  # Random seed used to generate this persona
 
     def to_dict(self) -> dict:
@@ -116,6 +122,7 @@ class Persona:
             ],
             "flaw_patterns": self.flaw_patterns,
             "trajectory": self.trajectory,
+            "receptivity": self.receptivity,
             "seed": self.seed,
         }
 
@@ -544,13 +551,22 @@ def generate_persona(
     # Communication style
     comm_style = rng.choice(COMMUNICATION_STYLES)
 
-    # Writing style (weighted: casual most common, text-speak for younger)
+    # Writing style (weighted by age - text-speak only for young users)
+    # WRITING_STYLES = ["formal", "casual", "text-speak", "terse", "verbose"]
     if age_range == "18-25":
-        writing_weights = [0.1, 0.3, 0.4, 0.1, 0.1]  # More text-speak
-    elif age_range in ("26-35", "36-45"):
-        writing_weights = [0.2, 0.4, 0.1, 0.15, 0.15]  # More casual/formal
-    else:
-        writing_weights = [0.3, 0.4, 0.05, 0.15, 0.1]  # More formal, less text-speak
+        writing_weights = [0.05, 0.35, 0.40, 0.10, 0.10]  # Heavy text-speak
+    elif age_range == "26-35":
+        writing_weights = [0.10, 0.45, 0.20, 0.15, 0.10]  # Some text-speak ok
+    elif age_range == "36-45":
+        writing_weights = [0.20, 0.45, 0.05, 0.15, 0.15]  # Minimal text-speak
+    else:  # 46-55, 55+
+        writing_weights = [
+            0.25,
+            0.45,
+            0.00,
+            0.15,
+            0.15,
+        ]  # No text-speak for older users
     writing_style = rng.choices(WRITING_STYLES, weights=writing_weights, k=1)[0]
 
     # Topic seeds
@@ -561,6 +577,9 @@ def generate_persona(
 
     # Trajectory (emotional arc across conversation)
     trajectory = rng.choices(TRAJECTORIES, weights=TRAJECTORY_WEIGHTS, k=1)[0]
+
+    # Receptivity (openness to therapeutic process)
+    receptivity = rng.choices(RECEPTIVITY_LEVELS, weights=RECEPTIVITY_WEIGHTS, k=1)[0]
 
     persona_id = f"persona_{seed:04d}"
 
@@ -574,6 +593,7 @@ def generate_persona(
         topic_seeds=topic_seeds,
         flaw_patterns=flaw_patterns,
         trajectory=trajectory,
+        receptivity=receptivity,
         seed=seed,
     )
 
@@ -607,6 +627,7 @@ def format_persona_for_prompt(persona: Persona) -> str:
         f"Communication style: {persona.communication_style}",
         f"Writing style: {persona.writing_style}",
         f"Trajectory: {persona.trajectory}",
+        f"Receptivity: {persona.receptivity}",
         "",
         "Topic seeds (things on your mind):",
     ]
