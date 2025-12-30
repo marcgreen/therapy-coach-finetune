@@ -17,12 +17,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Literal
 
+import tiktoken
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from llm_backend import ClaudeCLIBackend, GoogleBackend, LLMBackend, OpenAIBackend
 
 load_dotenv()
+
+# Tokenizer for counting tokens (cl100k_base is used by GPT-4/Claude-like models)
+_tokenizer = tiktoken.get_encoding("cl100k_base")
 
 # =============================================================================
 # Logging Configuration
@@ -1497,6 +1501,14 @@ def load_checkpoint_results(checkpoint_path: Path) -> dict[str, dict]:
     return results
 
 
+def count_conversation_tokens(turns: list[tuple[str, str]]) -> int:
+    """Count tokens in a conversation using cl100k_base encoding."""
+    text = ""
+    for user, assistant in turns:
+        text += user + "\n" + assistant + "\n"
+    return len(_tokenizer.encode(text))
+
+
 def append_checkpoint(
     checkpoint_path: Path,
     result: AssessmentResult,
@@ -1635,10 +1647,14 @@ async def assess_batch(
 
             # Checkpoint immediately
             if checkpoint_path is not None:
+                turns = conversation.to_tuples()
                 append_checkpoint(
                     checkpoint_path,
                     result,
-                    {"turns": conversation.to_tuples()},
+                    {
+                        "turns": turns,
+                        "token_count": count_conversation_tokens(turns),
+                    },
                 )
 
             # Progress callback
