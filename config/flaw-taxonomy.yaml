@@ -260,8 +260,9 @@ flaw_taxonomy:
 # - 1 from resistance OR memory (how they engage with help/history)
 
 persona_config:
-  # Half of users have no significant flaw patterns (clear communicators)
-  no_flaw_probability: 0.50  # 50% of personas have no assigned flaws
+  # 20% of users have no significant flaw patterns (clear communicators)
+  # The remaining 80% have realistic human communication flaws
+  no_flaw_probability: 0.20  # 20% of personas have no assigned flaws
 
   # For users WITH flaw patterns - how many patterns to assign:
   flaw_assignment:
