@@ -21,113 +21,95 @@
 | Very Long | 3 | 0 | ? |
 | **Total** | **41** | **29** | **24+** |
 
-**Target:** ~500 training examples from ~35 passing transcripts
+**Target:** ~200-300 training examples from ~30 passing transcripts
 
 ---
 
 ## Task 1: Assess Remaining Transcripts
 
 **Files:**
-- Modify: `assess_short_transcripts.py` (or create new batch script)
+- Create: `scripts/assess_remaining.py` ✅ DONE
 - Output: `data/assessments/remaining_batch_checkpoint.jsonl`
 
-### Step 1: Create batch assessment script for remaining transcripts
+**Status:** Script created, needs to be run.
 
-Create a script that assesses all unassessed transcripts (0000-series short + medium/long/very_long):
+### Implementation
+
+Uses existing `assess_batch()` from `assessor.py` for proper checkpointing/error handling:
 
 **File:** `scripts/assess_remaining.py`
 
 ```python
 #!/usr/bin/env python3
-"""Assess all remaining unassessed transcripts."""
+"""Assess all remaining unassessed transcripts using assess_batch."""
 
 import asyncio
-import json
 from pathlib import Path
 
-from assessor import assess_transcript, setup_logging, get_backend
-
+from assessor import (
+    ConversationInput,
+    assess_batch,
+    get_backend,
+    load_checkpoint,
+    load_conversation_from_file,
+    setup_logging,
+)
 
 TRANSCRIPT_DIRS = [
-    ("short", Path("data/raw/transcripts/short")),
-    ("medium", Path("data/raw/transcripts/medium")),
-    ("long", Path("data/raw/transcripts/long")),
-    ("very_long", Path("data/raw/transcripts/very_long")),
+    Path("data/raw/transcripts/short"),
+    Path("data/raw/transcripts/medium"),
+    Path("data/raw/transcripts/long"),
+    Path("data/raw/transcripts/very_long"),
 ]
 
-# Already assessed (from short_5000 batch)
-ASSESSED_CHECKPOINT = Path("data/assessments/short_5000_checkpoint.jsonl")
+PRIOR_CHECKPOINT = Path("data/assessments/short_5000_checkpoint.jsonl")
 OUTPUT_CHECKPOINT = Path("data/assessments/remaining_batch_checkpoint.jsonl")
 
 
-def load_assessed_ids() -> set[str]:
-    """Load IDs of already-assessed transcripts."""
-    assessed = set()
-    if ASSESSED_CHECKPOINT.exists():
-        with open(ASSESSED_CHECKPOINT) as f:
-            for line in f:
-                data = json.loads(line)
-                assessed.add(data["conversation_id"])
-    if OUTPUT_CHECKPOINT.exists():
-        with open(OUTPUT_CHECKPOINT) as f:
-            for line in f:
-                data = json.loads(line)
-                assessed.add(data["conversation_id"])
-    return assessed
-
-
-def find_unassessed_transcripts() -> list[Path]:
-    """Find all transcripts not yet assessed."""
-    assessed_ids = load_assessed_ids()
-    unassessed = []
-
-    for category, dir_path in TRANSCRIPT_DIRS:
+def find_all_transcripts() -> list[tuple[str, Path]]:
+    """Find all transcripts across all directories."""
+    transcripts = []
+    for dir_path in TRANSCRIPT_DIRS:
         if not dir_path.exists():
             continue
         for f in dir_path.glob("*.json"):
-            transcript_id = f.stem
-            if transcript_id not in assessed_ids:
-                unassessed.append(f)
-
-    return sorted(unassessed)
+            transcripts.append((f.stem, f))
+    return sorted(transcripts)
 
 
-async def main():
+async def main() -> None:
     setup_logging()
-    get_backend("google")  # Use Google backend like existing assessment
+    get_backend("google")
 
-    unassessed = find_unassessed_transcripts()
-    print(f"Found {len(unassessed)} unassessed transcripts")
+    prior_ids = load_checkpoint(PRIOR_CHECKPOINT) if PRIOR_CHECKPOINT.exists() else set()
+    all_transcripts = find_all_transcripts()
+    to_assess = [(tid, path) for tid, path in all_transcripts if tid not in prior_ids]
 
-    for i, path in enumerate(unassessed):
-        print(f"\n[{i+1}/{len(unassessed)}] Assessing {path.name}...")
+    print(f"Found {len(to_assess)} transcripts to assess ({len(prior_ids)} already done)")
 
-        with open(path) as f:
-            transcript = json.load(f)
+    if not to_assess:
+        print("Nothing to assess!")
+        return
 
-        result = await assess_transcript(transcript)
+    conversations: list[tuple[str, ConversationInput]] = []
+    for tid, path in to_assess:
+        conv = load_conversation_from_file(path)
+        conversations.append((tid, conv))
 
-        # Append to checkpoint
-        with open(OUTPUT_CHECKPOINT, "a") as f:
-            f.write(json.dumps({
-                "conversation_id": transcript["id"],
-                "pass": result.passed,
-                "score": result.score,
-                "safety_gate_failed": result.safety_gate_failed,
-                "category_scores": result.category_scores,
-                "failed_checks": result.failed_checks,
-                "source_file": str(path),
-            }) + "\n")
+    await assess_batch(
+        conversations,
+        checkpoint_path=OUTPUT_CHECKPOINT,
+        concurrency=1,
+    )
 
-        status = "PASS" if result.passed else "FAIL"
-        print(f"  {status} (score={result.score:.3f})")
+    print(f"\nResults saved to {OUTPUT_CHECKPOINT}")
 
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Step 2: Run the assessment
+### Step: Run the assessment
 
 ```bash
 uv run python scripts/assess_remaining.py
@@ -135,7 +117,7 @@ uv run python scripts/assess_remaining.py
 
 Expected: Assesses ~12 transcripts (5 short + 3 medium + 1 long + 3 very_long)
 
-### Step 3: Review results and commit
+### Step: Review results
 
 ```bash
 cat data/assessments/remaining_batch_checkpoint.jsonl | jq -s '{
@@ -143,9 +125,6 @@ cat data/assessments/remaining_batch_checkpoint.jsonl | jq -s '{
   passed: [.[] | select(.pass)] | length,
   failed: [.[] | select(.pass | not)] | length
 }'
-
-git add scripts/assess_remaining.py data/assessments/remaining_batch_checkpoint.jsonl
-git commit -m "feat: assess remaining transcripts for e2e test"
 ```
 
 ---
