@@ -654,9 +654,9 @@ from trl import SFTConfig, SFTTrainer
 
 
 # Configuration
-BASE_MODEL = "google/gemma-2-9b-it"  # Using Gemma 2 9B (more accessible than 12B)
+BASE_MODEL = "google/gemma-3-12b-it"  # Gemma 3 12B instruction-tuned
 DATASET_ID = "marcgreen/therapeutic-coaching-sft"  # Your dataset
-OUTPUT_REPO = "marcgreen/therapeutic-gemma-9b"  # Output model
+OUTPUT_REPO = "marcgreen/therapeutic-gemma-12b"  # Output model
 
 # LoRA configuration
 LORA_CONFIG = LoraConfig(
@@ -775,7 +775,7 @@ Use the model-trainer skill to submit a training job:
 Expected output:
 - Job ID and monitoring URL
 - Training runs for ~2-3 hours
-- Model pushed to `marcgreen/therapeutic-gemma-9b`
+- Model pushed to `marcgreen/therapeutic-gemma-12b`
 
 ### Step 4: Monitor training
 
@@ -830,9 +830,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 # Configuration - set via environment variables
-ADAPTER_MODEL = os.environ.get("ADAPTER_MODEL", "marcgreen/therapeutic-gemma-9b")
-BASE_MODEL = os.environ.get("BASE_MODEL", "google/gemma-2-9b-it")
-OUTPUT_REPO = os.environ.get("OUTPUT_REPO", "marcgreen/therapeutic-gemma-9b-gguf")
+ADAPTER_MODEL = os.environ.get("ADAPTER_MODEL", "marcgreen/therapeutic-gemma-12b")
+BASE_MODEL = os.environ.get("BASE_MODEL", "google/gemma-3-12b-it")
+OUTPUT_REPO = os.environ.get("OUTPUT_REPO", "marcgreen/therapeutic-gemma-12b-gguf")
 QUANTIZATION = os.environ.get("QUANTIZATION", "q4_k_m")
 
 
@@ -875,7 +875,7 @@ def main():
     ], check=True)
 
     # Run conversion
-    output_file = gguf_dir / f"therapeutic-gemma-9b-{QUANTIZATION}.gguf"
+    output_file = gguf_dir / f"therapeutic-gemma-12b-{QUANTIZATION}.gguf"
     subprocess.run([
         "python", str(work_dir / "llama.cpp/convert_hf_to_gguf.py"),
         str(merged_dir),
@@ -913,16 +913,16 @@ Use the model-trainer skill to submit a GGUF conversion job:
 - Hardware: a10g-large (needs memory for model loading)
 - Timeout: 1h
 - Environment variables:
-  - ADAPTER_MODEL: marcgreen/therapeutic-gemma-9b
-  - BASE_MODEL: google/gemma-2-9b-it
-  - OUTPUT_REPO: marcgreen/therapeutic-gemma-9b-gguf
+  - ADAPTER_MODEL: marcgreen/therapeutic-gemma-12b
+  - BASE_MODEL: google/gemma-3-12b-it
+  - OUTPUT_REPO: marcgreen/therapeutic-gemma-12b-gguf
 ```
 
 ### Step 3: Download GGUF for local testing
 
 ```bash
-huggingface-cli download marcgreen/therapeutic-gemma-9b-gguf \
-    therapeutic-gemma-9b-q4_k_m.gguf \
+huggingface-cli download marcgreen/therapeutic-gemma-12b-gguf \
+    therapeutic-gemma-12b-q4_k_m.gguf \
     --local-dir ~/models/
 ```
 
@@ -1029,17 +1029,20 @@ from pathlib import Path
 import numpy as np
 from scipy.stats import ttest_rel
 
-from assessor import assess_transcript, setup_logging, get_backend
-from llm_backend import LlamaServerBackend
+from openai import AsyncOpenAI
+
+from assessor import assess_conversation, setup_logging, get_backend, ConversationInput
 
 
 EVAL_PERSONAS = Path("data/evaluation/eval_personas.json")
 SYSTEM_PROMPT = Path("config/system-prompt.md")
 OUTPUT_DIR = Path("data/evaluation/results")
 
-# Model paths
-BASE_MODEL_PATH = Path.home() / "models/gemma-3-12b-it-q4_0.gguf"
-FINETUNED_MODEL_PATH = Path.home() / "models/therapeutic-gemma-9b-q4_k_m.gguf"
+# Server ports (run llama-server on these ports before evaluation)
+# llama-server -m ~/models/gemma-3-12b-it-q4_0.gguf --port 8080 -ngl 99
+# llama-server -m ~/models/therapeutic-gemma-12b-q4_k_m.gguf --port 8081 -ngl 99
+BASE_MODEL_PORT = 8080
+FINETUNED_MODEL_PORT = 8081
 
 # Evaluation config
 TRIALS_PER_PERSONA = 2
@@ -1064,17 +1067,19 @@ def get_system_prompt() -> str:
 
 
 async def generate_conversation(
-    model_backend,
+    client: AsyncOpenAI,
     persona: dict,
     system_prompt: str,
     target_turns: int,
 ) -> dict:
-    """Generate a full conversation with the given model."""
+    """Generate a full conversation with the given model.
+
+    Uses OpenAI-compatible client (works with llama-server).
+    """
     # This is a simplified version - full implementation would use
     # the user simulator from transcript_generator.py
 
     exchanges = []
-    history = []
 
     # For e2e test, use simple user messages based on persona
     user_messages = [
@@ -1097,8 +1102,14 @@ async def generate_conversation(
             messages.append({"role": "assistant", "content": ex["assistant"]})
         messages.append({"role": "user", "content": user_msg})
 
-        # Generate response
-        response = await model_backend.generate(messages)
+        # Generate response via OpenAI-compatible API
+        completion = await client.chat.completions.create(
+            model="local",  # llama-server ignores model name
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1024,
+        )
+        response = completion.choices[0].message.content or ""
 
         exchanges.append({
             "exchange_number": turn + 1,
@@ -1114,17 +1125,21 @@ async def generate_conversation(
 
 
 async def evaluate_model(
-    model_path: Path,
+    port: int,
     model_name: str,
     personas: list[dict],
     system_prompt: str,
 ) -> list[float]:
-    """Evaluate a model on all personas."""
+    """Evaluate a model on all personas.
+
+    Assumes llama-server is running on the given port.
+    Start it manually before running:
+        llama-server -m <model.gguf> --port <port> -ngl 99
+    """
     print(f"\nEvaluating {model_name}...")
 
-    # Start llama-server for this model
-    # Note: In practice, you'd need to manage the server lifecycle
-    backend = LlamaServerBackend(model_path=str(model_path))
+    # Connect to llama-server's OpenAI-compatible API
+    client = AsyncOpenAI(base_url=f"http://localhost:{port}/v1", api_key="not-needed")
 
     scores = []
     for persona in personas:
@@ -1132,11 +1147,15 @@ async def evaluate_model(
             print(f"  {persona['name']} trial {trial + 1}...")
 
             transcript = await generate_conversation(
-                backend, persona, system_prompt, TARGET_TURNS
+                client, persona, system_prompt, TARGET_TURNS
             )
 
+            # Convert transcript dict to ConversationInput for assessment
+            turns = [(ex["user"], ex["assistant"]) for ex in transcript["exchanges"]]
+            conv_input = ConversationInput(turns=turns)
+
             # Assess
-            result = await assess_transcript(transcript)
+            result = await assess_conversation(conv_input)
             scores.append(result.score)
 
             # Save transcript
@@ -1192,12 +1211,12 @@ async def main():
 
     system_prompt = get_system_prompt()
 
-    # Evaluate both models
+    # Evaluate both models (assumes llama-servers running on ports 8080 and 8081)
     base_scores = await evaluate_model(
-        BASE_MODEL_PATH, "base", personas, system_prompt
+        BASE_MODEL_PORT, "base", personas, system_prompt
     )
     ft_scores = await evaluate_model(
-        FINETUNED_MODEL_PATH, "finetuned", personas, system_prompt
+        FINETUNED_MODEL_PORT, "finetuned", personas, system_prompt
     )
 
     # Compare
@@ -1230,7 +1249,14 @@ if __name__ == "__main__":
 # First, generate eval personas
 uv run python scripts/generate_eval_personas.py
 
-# Then run evaluation (requires both models available locally)
+# Start llama-servers for both models (in separate terminals)
+# Terminal 1 - Base model on port 8080:
+llama-server -m ~/models/gemma-3-12b-it-q4_0.gguf --port 8080 -ngl 99
+
+# Terminal 2 - Fine-tuned model on port 8081:
+llama-server -m ~/models/therapeutic-gemma-12b-q4_k_m.gguf --port 8081 -ngl 99
+
+# Then run evaluation (requires both servers running)
 uv run python scripts/run_evaluation.py
 ```
 
@@ -1278,11 +1304,11 @@ data/processed/training_examples.jsonl
     ↓ (push_dataset.py)
 HuggingFace Hub: marcgreen/therapeutic-coaching-sft
     ↓ (train_therapeutic_model.py via HF Jobs)
-HuggingFace Hub: marcgreen/therapeutic-gemma-9b
+HuggingFace Hub: marcgreen/therapeutic-gemma-12b
     ↓ (convert_to_gguf.py via HF Jobs)
-HuggingFace Hub: marcgreen/therapeutic-gemma-9b-gguf
+HuggingFace Hub: marcgreen/therapeutic-gemma-12b-gguf
     ↓ (download to local)
-~/models/therapeutic-gemma-9b-q4_k_m.gguf
+~/models/therapeutic-gemma-12b-q4_k_m.gguf
     ↓ (run_evaluation.py)
 data/evaluation/results/comparison.json
 ```

@@ -1,0 +1,180 @@
+{
+  "count": 35,
+  "transcripts": [
+    {
+      "id": "transcript_0000_20251228_000026",
+      "source_file": "data/raw/transcripts/short/transcript_0000_20251228_000026.json",
+      "score": 0.865
+    },
+    {
+      "id": "transcript_0001_20251228_002326",
+      "source_file": "data/raw/transcripts/short/transcript_0001_20251228_002326.json",
+      "score": 0.843
+    },
+    {
+      "id": "transcript_0002_20251228_004352",
+      "source_file": "data/raw/transcripts/short/transcript_0002_20251228_004352.json",
+      "score": 0.91
+    },
+    {
+      "id": "transcript_0003_20251228_010441",
+      "source_file": "data/raw/transcripts/short/transcript_0003_20251228_010441.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_0004_20251228_012536",
+      "source_file": "data/raw/transcripts/short/transcript_0004_20251228_012536.json",
+      "score": 1.0
+    },
+    {
+      "id": "transcript_10000_20251228_000026",
+      "source_file": "data/raw/transcripts/medium/transcript_10000_20251228_000026.json",
+      "score": 0.903
+    },
+    {
+      "id": "transcript_10001_20251228_005437",
+      "source_file": "data/raw/transcripts/medium/transcript_10001_20251228_005437.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_20000_20251228_000026",
+      "source_file": "data/raw/transcripts/long/transcript_20000_20251228_000026.json",
+      "score": 0.903
+    },
+    {
+      "id": "transcript_2000_20251228_220320",
+      "source_file": "data/raw/transcripts/very_long/transcript_2000_20251228_220320.json",
+      "score": 0.94
+    },
+    {
+      "id": "transcript_2001_20251228_233240",
+      "source_file": "data/raw/transcripts/very_long/transcript_2001_20251228_233240.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_4000_20251229_000807",
+      "source_file": "data/raw/transcripts/medium/transcript_4000_20251229_000807.json",
+      "score": 0.963
+    },
+    {
+      "id": "transcript_5000_20251229_001141",
+      "source_file": "data/raw/transcripts/short/transcript_5000_20251229_001141.json",
+      "score": 0.903
+    },
+    {
+      "id": "transcript_5001_20251229_002640",
+      "source_file": "data/raw/transcripts/short/transcript_5001_20251229_002640.json",
+      "score": 0.865
+    },
+    {
+      "id": "transcript_5003_20251229_011020",
+      "source_file": "data/raw/transcripts/short/transcript_5003_20251229_011020.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_5004_20251229_012508",
+      "source_file": "data/raw/transcripts/short/transcript_5004_20251229_012508.json",
+      "score": 0.94
+    },
+    {
+      "id": "transcript_5006_20251229_020516",
+      "source_file": "data/raw/transcripts/short/transcript_5006_20251229_020516.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_5007_20251229_022759",
+      "source_file": "data/raw/transcripts/short/transcript_5007_20251229_022759.json",
+      "score": 0.865
+    },
+    {
+      "id": "transcript_5009_20251229_030508",
+      "source_file": "data/raw/transcripts/short/transcript_5009_20251229_030508.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_5010_20251229_032355",
+      "source_file": "data/raw/transcripts/short/transcript_5010_20251229_032355.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_5011_20251229_034235",
+      "source_file": "data/raw/transcripts/short/transcript_5011_20251229_034235.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_5012_20251229_035934",
+      "source_file": "data/raw/transcripts/short/transcript_5012_20251229_035934.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_5013_20251229_041904",
+      "source_file": "data/raw/transcripts/short/transcript_5013_20251229_041904.json",
+      "score": 0.865
+    },
+    {
+      "id": "transcript_5014_20251229_044049",
+      "source_file": "data/raw/transcripts/short/transcript_5014_20251229_044049.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_5017_20251229_054313",
+      "source_file": "data/raw/transcripts/short/transcript_5017_20251229_054313.json",
+      "score": 0.94
+    },
+    {
+      "id": "transcript_5018_20251229_060409",
+      "source_file": "data/raw/transcripts/short/transcript_5018_20251229_060409.json",
+      "score": 0.803
+    },
+    {
+      "id": "transcript_5019_20251229_062459",
+      "source_file": "data/raw/transcripts/short/transcript_5019_20251229_062459.json",
+      "score": 0.94
+    },
+    {
+      "id": "transcript_5020_20251229_064209",
+      "source_file": "data/raw/transcripts/short/transcript_5020_20251229_064209.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_5022_20251229_072529",
+      "source_file": "data/raw/transcripts/short/transcript_5022_20251229_072529.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_5023_20251229_075006",
+      "source_file": "data/raw/transcripts/short/transcript_5023_20251229_075006.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_5024_20251229_081213",
+      "source_file": "data/raw/transcripts/short/transcript_5024_20251229_081213.json",
+      "score": 0.835
+    },
+    {
+      "id": "transcript_5025_20251229_083448",
+      "source_file": "data/raw/transcripts/short/transcript_5025_20251229_083448.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_5026_20251229_085537",
+      "source_file": "data/raw/transcripts/short/transcript_5026_20251229_085537.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_5027_20251229_091437",
+      "source_file": "data/raw/transcripts/short/transcript_5027_20251229_091437.json",
+      "score": 0.94
+    },
+    {
+      "id": "transcript_5028_20251229_092955",
+      "source_file": "data/raw/transcripts/short/transcript_5028_20251229_092955.json",
+      "score": 0.94
+    },
+    {
+      "id": "transcript_5029_20251229_095343",
+      "source_file": "data/raw/transcripts/short/transcript_5029_20251229_095343.json",
+      "score": 0.903
+    }
+  ]
+}
