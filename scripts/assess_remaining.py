@@ -1,100 +1,77 @@
 #!/usr/bin/env python3
-"""Assess all remaining unassessed transcripts."""
+"""Assess all remaining unassessed transcripts using assess_batch."""
 
 import asyncio
-import json
 from pathlib import Path
 
 from assessor import (
-    assess_conversation,
+    ConversationInput,
+    assess_batch,
     get_backend,
+    load_checkpoint,
     load_conversation_from_file,
     setup_logging,
 )
 
 TRANSCRIPT_DIRS = [
-    ("short", Path("data/raw/transcripts/short")),
-    ("medium", Path("data/raw/transcripts/medium")),
-    ("long", Path("data/raw/transcripts/long")),
-    ("very_long", Path("data/raw/transcripts/very_long")),
+    Path("data/raw/transcripts/short"),
+    Path("data/raw/transcripts/medium"),
+    Path("data/raw/transcripts/long"),
+    Path("data/raw/transcripts/very_long"),
 ]
 
-# Already assessed (from short_5000 batch)
-ASSESSED_CHECKPOINT = Path("data/assessments/short_5000_checkpoint.jsonl")
+# Previously assessed checkpoint (don't re-assess these)
+PRIOR_CHECKPOINT = Path("data/assessments/short_5000_checkpoint.jsonl")
+# Output for this batch
 OUTPUT_CHECKPOINT = Path("data/assessments/remaining_batch_checkpoint.jsonl")
 
 
-def load_assessed_ids() -> set[str]:
-    """Load IDs of already-assessed transcripts."""
-    assessed = set()
-    if ASSESSED_CHECKPOINT.exists():
-        with open(ASSESSED_CHECKPOINT) as f:
-            for line in f:
-                data = json.loads(line)
-                assessed.add(data["conversation_id"])
-    if OUTPUT_CHECKPOINT.exists():
-        with open(OUTPUT_CHECKPOINT) as f:
-            for line in f:
-                data = json.loads(line)
-                assessed.add(data["conversation_id"])
-    return assessed
-
-
-def find_unassessed_transcripts() -> list[Path]:
-    """Find all transcripts not yet assessed."""
-    assessed_ids = load_assessed_ids()
-    unassessed = []
-
-    for _category, dir_path in TRANSCRIPT_DIRS:
+def find_all_transcripts() -> list[tuple[str, Path]]:
+    """Find all transcripts across all directories."""
+    transcripts = []
+    for dir_path in TRANSCRIPT_DIRS:
         if not dir_path.exists():
             continue
         for f in dir_path.glob("*.json"):
-            transcript_id = f.stem
-            if transcript_id not in assessed_ids:
-                unassessed.append(f)
-
-    return sorted(unassessed)
+            transcripts.append((f.stem, f))
+    return sorted(transcripts)
 
 
 async def main() -> None:
     setup_logging()
-    get_backend("google")  # Use Google backend like existing assessment
+    get_backend("google")
 
-    unassessed = find_unassessed_transcripts()
-    print(f"Found {len(unassessed)} unassessed transcripts")
+    # Load prior checkpoint to skip already-assessed
+    prior_ids = (
+        load_checkpoint(PRIOR_CHECKPOINT) if PRIOR_CHECKPOINT.exists() else set()
+    )
 
-    for i, path in enumerate(unassessed):
-        print(f"\n[{i + 1}/{len(unassessed)}] Assessing {path.name}...")
+    # Find all transcripts and filter out prior assessments
+    all_transcripts = find_all_transcripts()
+    to_assess = [(tid, path) for tid, path in all_transcripts if tid not in prior_ids]
 
-        # Load transcript using assessor's loader (handles "exchanges" format)
-        conversation = load_conversation_from_file(path)
+    print(
+        f"Found {len(to_assess)} transcripts to assess ({len(prior_ids)} already done)"
+    )
 
-        # Get transcript ID from the JSON file
-        with open(path) as f:
-            transcript_data = json.load(f)
-        transcript_id = transcript_data.get("id", path.stem)
+    if not to_assess:
+        print("Nothing to assess!")
+        return
 
-        result = await assess_conversation(conversation, conversation_id=transcript_id)
+    # Load conversations
+    conversations: list[tuple[str, ConversationInput]] = []
+    for tid, path in to_assess:
+        conv = load_conversation_from_file(path)
+        conversations.append((tid, conv))
 
-        # Append to checkpoint
-        with open(OUTPUT_CHECKPOINT, "a") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "conversation_id": transcript_id,
-                        "pass": result.passed,
-                        "score": result.score,
-                        "safety_gate_failed": result.safety_gate_failed,
-                        "category_scores": result.category_scores,
-                        "failed_checks": result.failed_checks,
-                        "source_file": str(path),
-                    }
-                )
-                + "\n"
-            )
+    # assess_batch handles checkpointing, resume, errors, and progress
+    await assess_batch(
+        conversations,
+        checkpoint_path=OUTPUT_CHECKPOINT,
+        concurrency=1,  # Sequential to avoid rate limits
+    )
 
-        status = "PASS" if result.passed else "FAIL"
-        print(f"  {status} (score={result.score:.3f})")
+    print(f"\nResults saved to {OUTPUT_CHECKPOINT}")
 
 
 if __name__ == "__main__":
