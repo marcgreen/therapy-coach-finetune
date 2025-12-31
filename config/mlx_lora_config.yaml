@@ -1,0 +1,30 @@
+# MLX LoRA Fine-tuning Configuration
+# For therapeutic coaching model validation run
+
+model: ~/models/gemma-3-12b-mlx
+data: data/processed/mlx_training
+adapter_path: adapters/therapeutic-gemma-12b
+
+# Training parameters
+train: true
+iters: 800                    # ~3 epochs over 267 examples
+batch_size: 1                 # Keep low for long sequences
+learning_rate: 1e-5           # Conservative for fine-tuning
+grad_accumulation_steps: 8    # Effective batch size of 8
+
+# LoRA parameters
+fine_tune_type: lora
+num_layers: -1                # All layers
+
+# Evaluation
+val_batches: -1               # Use all validation data
+steps_per_report: 10
+steps_per_eval: 100
+save_every: 200
+
+# Optimization
+mask_prompt: true             # Only train on assistant responses
+max_seq_length: 8192          # Reasonable context for our data
+
+# Reproducibility
+seed: 42
