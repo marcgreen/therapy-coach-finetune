@@ -30,7 +30,7 @@ def main() -> None:
     dataset.push_to_hub(
         REPO_ID,
         private=True,
-        commit_message="Upload therapeutic coaching SFT training data (297 examples)",
+        commit_message=f"Upload therapeutic coaching SFT training data ({len(dataset)} examples)",
     )
 
     print(f"\nDone! Dataset available at: https://huggingface.co/datasets/{REPO_ID}")

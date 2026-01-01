@@ -205,7 +205,7 @@ Generate your next message to the coach. Remember:
 - Your message can cover 1-3 topics (mix of new, updates, reactions)
 - Vary your length and energy based on where you are emotionally
 
-Your message:
+CRITICAL: Output ONLY your in-character message. No meta-commentary, no "I'll generate...", no explaining your approach, no preamble. Start directly as your character speaking to the coach.
 ```
 
 ---

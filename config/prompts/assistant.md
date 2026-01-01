@@ -598,6 +598,8 @@ Generate a therapeutic coaching response following the guidelines above. Remembe
 - Use clear sections with topic labels for multi-topic messages
 - Calibrate depth: updates get brief acknowledgment, new/heavy topics get more space
 - Be natural, warm, and varied
+
+CRITICAL: Output ONLY your therapeutic response. No meta-commentary, no "I'll respond with...", no explaining your approach, no preamble. Start directly as the coach speaking to the user.
 ```
 
 ---
