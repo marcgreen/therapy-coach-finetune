@@ -1,5 +1,5 @@
 {
-  "count": 35,
+  "count": 51,
   "transcripts": [
     {
       "id": "transcript_0000_20251228_000026",
@@ -175,6 +175,86 @@
       "id": "transcript_5029_20251229_095343",
       "source_file": "data/raw/transcripts/short/transcript_5029_20251229_095343.json",
       "score": 0.903
+    },
+    {
+      "id": "transcript_6000_20251231_163513",
+      "source_file": "data/raw/transcripts/medium/transcript_6000_20251231_163513.json",
+      "score": 0.87
+    },
+    {
+      "id": "transcript_6002_20251231_192412",
+      "source_file": "data/raw/transcripts/medium/transcript_6002_20251231_192412.json",
+      "score": 0.94
+    },
+    {
+      "id": "transcript_6003_20251231_201249",
+      "source_file": "data/raw/transcripts/medium/transcript_6003_20251231_201249.json",
+      "score": 0.835
+    },
+    {
+      "id": "transcript_6004_20251231_210146",
+      "source_file": "data/raw/transcripts/medium/transcript_6004_20251231_210146.json",
+      "score": 0.828
+    },
+    {
+      "id": "transcript_6050_20251231_195735",
+      "source_file": "data/raw/transcripts/medium/transcript_6050_20251231_195735.json",
+      "score": 0.94
+    },
+    {
+      "id": "transcript_6051_20251231_204726",
+      "source_file": "data/raw/transcripts/medium/transcript_6051_20251231_204726.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_6052_20260101_120801",
+      "source_file": "data/raw/transcripts/medium/transcript_6052_20260101_120801.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_6054_20260101_133539",
+      "source_file": "data/raw/transcripts/medium/transcript_6054_20260101_133539.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_6076_20251231_204723",
+      "source_file": "data/raw/transcripts/medium/transcript_6076_20251231_204723.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_6100_20251231_195952",
+      "source_file": "data/raw/transcripts/medium/transcript_6100_20251231_195952.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_6101_20251231_204708",
+      "source_file": "data/raw/transcripts/medium/transcript_6101_20251231_204708.json",
+      "score": 0.97
+    },
+    {
+      "id": "transcript_7000_20260101_141013",
+      "source_file": "data/raw/transcripts/short/transcript_7000_20260101_141013.json",
+      "score": 0.895
+    },
+    {
+      "id": "transcript_7020_20260101_135917",
+      "source_file": "data/raw/transcripts/short/transcript_7020_20260101_135917.json",
+      "score": 0.903
+    },
+    {
+      "id": "transcript_7040_20260101_135936",
+      "source_file": "data/raw/transcripts/short/transcript_7040_20260101_135936.json",
+      "score": 0.903
+    },
+    {
+      "id": "transcript_7060_20260101_135956",
+      "source_file": "data/raw/transcripts/short/transcript_7060_20260101_135956.json",
+      "score": 0.903
+    },
+    {
+      "id": "transcript_7080_20260101_140012",
+      "source_file": "data/raw/transcripts/short/transcript_7080_20260101_140012.json",
+      "score": 0.82
     }
   ]
 }
