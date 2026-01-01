@@ -15,7 +15,7 @@ from assessor import (
 
 # Set to None to assess all transcripts, or a list of prefixes to skip
 # (e.g., ["transcript_7"] to skip in-progress 7000-series long transcripts)
-SKIP_PREFIXES: list[str] | None = ["transcript_7"]
+SKIP_PREFIXES: list[str] | None = None
 
 TRANSCRIPT_DIRS = [
     Path("data/raw/transcripts"),  # Root directory (includes 1000-series)

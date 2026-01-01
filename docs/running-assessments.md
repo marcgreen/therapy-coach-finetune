@@ -176,10 +176,10 @@ print('Unassessed:', sorted(unassessed))
 
 ```bash
 # Last 5 assessments
-tail -5 data/assessments/remaining_batch_checkpoint.jsonl | jq '{id: .conversation_id, passed: .passed, score: .score}'
+tail -5 data/assessments/remaining_batch_checkpoint.jsonl | jq '{id: .conversation_id, pass: .pass, score: .score}'
 
 # All failed assessments
-cat data/assessments/*.jsonl | jq 'select(.passed == false) | {id: .conversation_id, score: .score, failed: .failed_checks}'
+cat data/assessments/*.jsonl | jq 'select(.pass == false) | {id: .conversation_id, score: .score, failed: .failed_checks}'
 ```
 
 ## Checkpoint Files
@@ -195,7 +195,7 @@ Each line in a checkpoint file is a complete `AssessmentResult` JSON object:
 ```json
 {
   "conversation_id": "transcript_5000_20251229_001141",
-  "passed": true,
+  "pass": true,
   "score": 0.867,
   "threshold": 0.8,
   "category_scores": {"comprehension": 1.0, "connection": 0.75, ...},
@@ -203,10 +203,16 @@ Each line in a checkpoint file is a complete `AssessmentResult` JSON object:
   "reasonings": {"CQ1": "The assistant...", ...},
   "failed_checks": [],
   "safety_gate_failed": false,
-  "failed_safety": [],
-  "error_count": 0
+  "failed_safety": null,
+  "error_count": 0,
+  "weights": {"comprehension": 0.15, "connection": 0.2, ...}
 }
 ```
+
+**Field naming notes:**
+- The weighted score is stored as `score`, not `weighted_score`
+- Pass/fail status is `pass`, not `passed`
+- Safety failures use `failed_safety: null` when none, not an empty array
 
 ## Assessment Criteria
 
