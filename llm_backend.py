@@ -34,6 +34,8 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 from pydantic import BaseModel
+import re
+
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -41,6 +43,7 @@ from tenacity import (
     wait_fixed,
     retry_if_exception,
     before_sleep_log,
+    RetryCallState,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +80,80 @@ def _is_rate_limit_error(exception: BaseException) -> bool:
         return True
 
     return False
+
+
+def _is_transient_google_error(exception: BaseException) -> bool:
+    """Check if exception is a transient Google error worth retrying.
+
+    This includes:
+    - Rate limit errors (429)
+    - JSON parse errors (Gemini sometimes returns malformed JSON)
+    - Server errors (5xx)
+    """
+    # Rate limits
+    if _is_rate_limit_error(exception):
+        return True
+
+    # JSON parse errors from complete_structured (transient Gemini issue)
+    if isinstance(exception, ValueError) and "Failed to parse Google response" in str(
+        exception
+    ):
+        return True
+
+    # Google server errors (5xx)
+    try:
+        from google.genai.errors import ClientError, ServerError
+
+        if isinstance(exception, ServerError):
+            return True
+        if isinstance(exception, ClientError) and "5" in str(exception)[:3]:
+            return True
+    except ImportError:
+        pass
+
+    return False
+
+
+def _extract_google_retry_delay(exception: BaseException) -> float | None:
+    """Extract retryDelay from Google API error response.
+
+    Google 429 errors include RetryInfo with format like:
+    {'retryDelay': '16.412038513s'} or {'retryDelay': '16s'}
+
+    Returns delay in seconds, or None if not found.
+    """
+    error_str = str(exception)
+
+    # Look for retryDelay pattern: '16s' or '16.412038513s'
+    match = re.search(r"retryDelay['\"]:\s*['\"](\d+(?:\.\d+)?)s['\"]", error_str)
+    if match:
+        return float(match.group(1))
+
+    # Also check for "Please retry in X.Xs" message
+    match = re.search(r"Please retry in (\d+(?:\.\d+)?)s", error_str)
+    if match:
+        return float(match.group(1))
+
+    return None
+
+
+def _google_wait_strategy(retry_state: RetryCallState) -> float:
+    """Custom wait strategy that uses Google's retryDelay when available.
+
+    Falls back to exponential backoff if retryDelay not found.
+    """
+    exception = retry_state.outcome.exception() if retry_state.outcome else None
+
+    if exception:
+        delay = _extract_google_retry_delay(exception)
+        if delay is not None:
+            # Add small buffer (1s) to avoid hitting limit edge
+            logger.info(f"Using Google's suggested retry delay: {delay + 1:.1f}s")
+            return delay + 1.0
+
+    # Fallback: exponential backoff (2^attempt * 2, min 5s, max 120s)
+    attempt = retry_state.attempt_number
+    return min(120.0, max(5.0, (2**attempt) * 2))
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -270,8 +347,8 @@ class GoogleBackend(LLMBackend):
 
     @retry(
         retry=retry_if_exception(_is_rate_limit_error),
-        stop=stop_after_attempt(10),  # More retries for Google's strict rate limits
-        wait=wait_exponential(multiplier=2, min=5, max=120),  # Longer waits for Google
+        stop=stop_after_attempt(10),
+        wait=_google_wait_strategy,  # Use Google's suggested retry delay
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def complete(
@@ -320,9 +397,9 @@ class GoogleBackend(LLMBackend):
         )
 
     @retry(
-        retry=retry_if_exception(_is_rate_limit_error),
+        retry=retry_if_exception(_is_transient_google_error),
         stop=stop_after_attempt(10),
-        wait=wait_exponential(multiplier=2, min=5, max=120),
+        wait=_google_wait_strategy,  # Use Google's suggested retry delay
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def complete_structured(
