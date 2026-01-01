@@ -904,11 +904,11 @@ async def generate_batch(
     """Generate a batch of transcripts."""
     config = load_config()
 
-    # Initialize Claude CLI backends (Sonnet for user, Opus for assistant)
+    # Initialize Claude CLI backends (Haiku for user, Sonnet for assistant)
     try:
-        user_backend = ClaudeCLIBackend(model="sonnet", validate=True)
-        assistant_backend = ClaudeCLIBackend(model="opus", validate=True)
-        logger.info("Using Sonnet for user simulation, Opus for assistant generation")
+        user_backend = ClaudeCLIBackend(model="haiku", validate=True)
+        assistant_backend = ClaudeCLIBackend(model="sonnet", validate=True)
+        logger.info("Using Haiku for user simulation, Sonnet for assistant generation")
     except RuntimeError as e:
         logger.error(f"Backend initialization failed: {e}")
         sys.exit(1)
