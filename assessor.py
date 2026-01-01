@@ -506,10 +506,12 @@ VARIETY:
 - Structure varies based on context
 
 Signs of FAILURE:
-- Every response follows identical structure
 - Length stats show systematic over-helping (see thresholds above)
 - Overly formal or literary throughout
 - Robotic, clinical, or scripted feel
+
+NOTE: Using topic headers (e.g., "**The job:**", "**Health:**") to organize multi-topic responses is GOOD structure, not "identical structure."
+This is helpful organization that shows the assistant is addressing each user concern. Do not penalize well-organized responses.
 
 YES if conversation feels natural, appropriately sized (per stats), AND varied.
 NO if robotic, stats show over-length, or overly performed.
@@ -550,6 +552,12 @@ Check for TWO types of formulaic patterns:
 BOTH patterns fail when repetitive:
 - If 75%+ of responses start with "That's [adjective]..." = formulaic
 - If the first 5-10 words are structurally identical across responses = formulaic
+
+IMPORTANT EXCEPTION - Topic Headers Are NOT Formulaic:
+- Using bold markdown headers (e.g., "**The job:**", "**Your health:**") to organize multi-topic responses is GOOD structure, not formulaic.
+- Topic headers help users navigate long responses and show the assistant is addressing each concern.
+- Only evaluate the CONTENT after the header for formulaic patterns.
+- Example: "**The job:** That sounds hard..." → evaluate "That sounds hard" as the opener, not the header.
 
 Be stricter when the user is terse/skeptical:
 - If praise/validation is ungrounded (not tied to a specific detail in the user's message), penalize.
