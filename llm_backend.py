@@ -38,11 +38,18 @@ from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
+    wait_fixed,
     retry_if_exception,
     before_sleep_log,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ClaudeCLIRateLimitError(Exception):
+    """Raised when Claude CLI hits usage limits."""
+
+    pass
 
 
 def _is_rate_limit_error(exception: BaseException) -> bool:
@@ -64,6 +71,10 @@ def _is_rate_limit_error(exception: BaseException) -> bool:
             return True
     except ImportError:
         pass
+
+    # Claude CLI - typed exception
+    if isinstance(exception, ClaudeCLIRateLimitError):
+        return True
 
     return False
 
@@ -405,6 +416,14 @@ class ClaudeCLIBackend(LLMBackend):
     def name(self) -> str:
         return f"Claude CLI ({self._model})"
 
+    @retry(
+        retry=retry_if_exception(_is_rate_limit_error),
+        stop=stop_after_attempt(10),
+        wait=wait_fixed(
+            3600
+        ),  # Wait 1 hour between retries (usage limit resets hourly)
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
     async def complete(
         self,
         prompt: str,
@@ -436,6 +455,19 @@ class ClaudeCLIBackend(LLMBackend):
             ),
         )
 
+        # Parse JSON response (CLI returns JSON even on errors)
+        try:
+            response = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            response = None
+
+        # Check for rate limit errors via is_error field in structured response
+        if response and response.get("is_error"):
+            error_result = response.get("result", "")
+            if "hit your limit" in error_result.lower():
+                logger.warning(f"Claude CLI rate limit: {error_result}")
+                raise ClaudeCLIRateLimitError(error_result)
+
         if result.returncode != 0:
             error_msg = (
                 result.stderr.strip()
@@ -453,13 +485,23 @@ class ClaudeCLIBackend(LLMBackend):
                 f"Claude CLI error (exit {result.returncode}): {error_msg}"
             )
 
-        response = json.loads(result.stdout)
+        if response is None:
+            raise RuntimeError("Claude CLI returned invalid JSON")
+
         return CompletionResult(
             content=response.get("result", ""),
             model="claude-cli",
             usage=None,  # CLI doesn't report usage
         )
 
+    @retry(
+        retry=retry_if_exception(_is_rate_limit_error),
+        stop=stop_after_attempt(10),
+        wait=wait_fixed(
+            3600
+        ),  # Wait 1 hour between retries (usage limit resets hourly)
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
     async def complete_structured(
         self,
         prompt: str,
@@ -496,6 +538,19 @@ class ClaudeCLIBackend(LLMBackend):
             ),
         )
 
+        # Parse JSON response (CLI returns JSON even on errors)
+        try:
+            response = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            response = None
+
+        # Check for rate limit errors via is_error field in structured response
+        if response and response.get("is_error"):
+            error_result = response.get("result", "")
+            if "hit your limit" in error_result.lower():
+                logger.warning(f"Claude CLI rate limit: {error_result}")
+                raise ClaudeCLIRateLimitError(error_result)
+
         if result.returncode != 0:
             error_msg = (
                 result.stderr.strip()
@@ -513,7 +568,8 @@ class ClaudeCLIBackend(LLMBackend):
                 f"Claude CLI error (exit {result.returncode}): {error_msg}"
             )
 
-        response = json.loads(result.stdout)
+        if response is None:
+            raise RuntimeError("Claude CLI returned invalid JSON")
 
         # With --json-schema, the parsed output is in structured_output (already a dict)
         structured_output = response.get("structured_output")
