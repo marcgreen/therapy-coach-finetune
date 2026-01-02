@@ -205,6 +205,8 @@ Create training examples from full transcripts:
 
 **Reference:** [assessment-guide.md#slicing-strategy](assessment-guide.md#slicing-strategy)
 
+**Optional:** Use `hugging-face-dataset-creator` skill when ready to push `training_data.jsonl` to HF Hub.
+
 ---
 
 ## Infrastructure

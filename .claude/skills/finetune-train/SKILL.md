@@ -52,6 +52,8 @@ Format and upload your training data:
 
 3. **Verify access** — test loading the dataset before submitting training job
 
+**Optional:** Use `hugging-face-dataset-creator` skill for streamlined HF Hub dataset management.
+
 **Gate:** Dataset uploaded and accessible
 
 ---
@@ -187,6 +189,8 @@ improvement = np.mean(finetuned_scores) - np.mean(base_scores)
 
 **Reference:** [training-guide.md#evaluation](training-guide.md#evaluation)
 
+**Optional:** Use `hugging-face-evaluation-manager` skill to add evaluation results to your model card on HF Hub.
+
 ---
 
 ### Step 7: Sanity Checks
@@ -246,6 +250,12 @@ Before declaring success, verify:
 | [code/SETUP-REFERENCE.md](../code/SETUP-REFERENCE.md) | Project structure, script templates |
 | [code/infrastructure.py](../code/infrastructure.py) | Copy-paste ready: token counting, slice generation |
 | [examples/therapy-domain.md](../examples/therapy-domain.md) | Complete therapy example: evaluation results, model choice |
+
+**HuggingFace Hub integration (optional skills):**
+| Skill | Use For |
+|-------|---------|
+| `hugging-face-dataset-creator` | Push/manage datasets on HF Hub |
+| `hugging-face-evaluation-manager` | Add eval results to model cards |
 
 ---
 
