@@ -2,7 +2,10 @@
 
 This directory contains domain-agnostic infrastructure code that can be copied directly into any multi-turn conversation fine-tuning project.
 
-**→ See [SETUP-REFERENCE.md](SETUP-REFERENCE.md) for project structure and file templates (agent reference).**
+**→ See [SETUP-REFERENCE.md](SETUP-REFERENCE.md) for:**
+- Project structure and file templates (for agents setting up projects)
+- Manual usage examples (for humans using infrastructure.py directly)
+- Script running instructions (for humans running the pipeline)
 
 ## Files
 

@@ -1,6 +1,6 @@
 ---
 name: finetune-design
-description: Use when preparing to fine-tune an LLM for multi-turn conversations. Covers model selection, rubric design, persona creation, and prompt engineering. Complete this phase before generating any training data.
+description: Use when preparing to fine-tune an LLM for multi-turn conversations, before generating any training data. Triggers - starting a fine-tuning project, need to define evaluation criteria, designing conversation data generation.
 ---
 
 # Fine-tune Design
@@ -200,6 +200,16 @@ Before committing to fine-tune, evaluate the base model on your rubric.
 | <50% | Fine-tuning needed. Significant improvement expected. |
 
 **Gate:** Base model evaluated, decision to proceed documented in `base-model-eval-results.md`
+
+### Red Flags: Rationalizations to Resist
+
+| Rationalization | Reality |
+|-----------------|---------|
+| "Base model is obviously not good enough" | Evaluate anyway. You need baseline numbers for comparison. |
+| "I'll use numeric scales (1-5), it's fine" | Numeric scales drift across assessors. Binary judgments are consistent. |
+| "Calibration examples are overkill" | Without examples, backends interpret criteria differently. 20-30% disagreement. |
+| "Edge cases are rare, skip them" | Without 15% edge case representation, model fails at boundaries. |
+| "I know what users want, skip taxonomy" | Your intuition is biased. Formal taxonomy ensures coverage. |
 
 ---
 

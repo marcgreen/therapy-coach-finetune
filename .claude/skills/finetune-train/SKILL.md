@@ -1,6 +1,6 @@
 ---
 name: finetune-train
-description: Use when training a fine-tuned model and evaluating improvement. Covers HuggingFace Jobs, MLX local training, GGUF conversion, and evaluation methodology. Requires completing finetune-generate first.
+description: Use when training a fine-tuned model and evaluating improvement over base model. Triggers - have filtered training data, ready to submit training job, need to convert to GGUF. Requires finetune-generate first.
 ---
 
 # Fine-tune Train
@@ -215,6 +215,17 @@ Before declaring success, verify:
 | <10% improvement | Consider more/better training data |
 | Not significant (p>0.05) | More evaluation data or training data |
 | Safety regressions | Do not deploy, investigate |
+
+### Red Flags: Rationalizations to Resist
+
+| Rationalization | Reality |
+|-----------------|---------|
+| "Perplexity improved, we're done" | Low perplexity ≠ good conversations. Full-conversation eval required. |
+| "It feels better, ship it" | Feelings aren't evidence. Run statistical comparison (p<0.05). |
+| "Default hyperparameters are fine" | Large-vocab models (Gemma 3) OOM with defaults. Check max_length. |
+| "Skip GGUF, we'll deploy later" | GGUF conversion is the deployment. Test locally before declaring success. |
+| "Safety check is paranoid" | Fine-tuning can introduce regressions. Safety audit is mandatory. |
+| "$HF_TOKEN will work" | The placeholder resolves to limited OAuth token. Use your actual token. |
 
 ---
 

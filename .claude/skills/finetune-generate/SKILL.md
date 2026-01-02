@@ -1,6 +1,6 @@
 ---
 name: finetune-generate
-description: Use when generating synthetic training data for multi-turn conversation fine-tuning. Covers the iterative generation loop, assessment, human review, and quality auditing. Requires completing finetune-design first.
+description: Use when generating synthetic training data for multi-turn conversation fine-tuning. Triggers - have design artifacts ready, need to generate conversations, ready to assess quality. Requires finetune-design first.
 ---
 
 # Fine-tune Generate
@@ -67,6 +67,19 @@ The human reviews BOTH transcripts AND assessment results:
 - You're optimizing against a potentially broken metric
 - False positives silently corrupt training data
 - Rubric blind spots never get discovered
+
+### Red Flags: Rationalizations to Resist
+
+| Rationalization | Reality |
+|-----------------|---------|
+| "Human review slows us down" | Skipping review = optimizing against broken metric. 1 hour of review saves days of bad data. |
+| "Pass rate is high, must be fine" | High pass rate with single backend misses 20-30% of issues. Multi-backend + human review required. |
+| "We can add calibration examples later" | Without calibration examples, backends disagree silently. Add them during design. |
+| "The rubric is complete" | Rubrics evolve (12→18 criteria in therapy project). New failure modes emerge. |
+| "One assessor backend is enough" | Single backend gave transcript 1000 perfect 1.0; other backends caught 4 failures. |
+| "Let's just scale and filter later" | Scaling before 70% pass rate wastes compute. Fix prompts first. |
+
+**If you catch yourself using any of these rationalizations: STOP. Follow the gates.**
 
 ### Dual Iteration
 
