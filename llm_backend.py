@@ -243,8 +243,10 @@ class OpenAIBackend(LLMBackend):
 
     @retry(
         retry=retry_if_exception(_is_rate_limit_error),
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=60),
+        stop=stop_after_attempt(15),
+        wait=wait_exponential(
+            multiplier=2, min=5, max=300
+        ),  # Up to 5 min for TPM reset
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def complete(
@@ -282,8 +284,10 @@ class OpenAIBackend(LLMBackend):
 
     @retry(
         retry=retry_if_exception(_is_rate_limit_error),
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=60),
+        stop=stop_after_attempt(15),
+        wait=wait_exponential(
+            multiplier=2, min=5, max=300
+        ),  # Up to 5 min for TPM reset
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def complete_structured(
@@ -327,7 +331,7 @@ class GoogleBackend(LLMBackend):
 
     def __init__(
         self,
-        model: str = "gemini-3-flash",
+        model: str = "gemini-3-flash-preview",
         api_key: str | None = None,
     ):
         """Initialize Google Gemini backend.
@@ -336,9 +340,14 @@ class GoogleBackend(LLMBackend):
             model: Model to use (default: gemini-3-flash)
             api_key: Optional API key (uses GOOGLE_API_KEY env var if not provided)
         """
+        import os
+
         from google import genai
 
-        self._client = genai.Client(api_key=api_key)
+        # Use provided key or fall back to env var
+        # genai.Client() doesn't auto-detect env vars, so we must pass explicitly
+        key = api_key or os.environ.get("GOOGLE_API_KEY")
+        self._client = genai.Client(api_key=key)
         self._model = model
 
     @property

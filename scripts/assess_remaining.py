@@ -53,7 +53,7 @@ def find_all_transcripts() -> list[tuple[str, Path]]:
 
 async def main() -> None:
     setup_logging()
-    get_backend("google")
+    get_backend("openai", model="gpt-5-mini")
 
     # Load all prior checkpoints to skip already-assessed
     prior_ids: set[str] = set()

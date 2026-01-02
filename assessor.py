@@ -1371,8 +1371,23 @@ async def assess_conversation(
         f"({turn_count} turns, {len(applicable)} criteria)"
     )
 
-    # Run assessments in parallel (Claude CLI spawns subprocess calls per criterion).
-    tasks = [assess_criterion(backend, c, conversation) for c in applicable]
+    # Run assessments with controlled concurrency and jitter to avoid burst rate limits.
+    # Google API (especially preview models) can 429 even under RPM limit if requests
+    # arrive in bursts. Use moderate concurrency with delays for stability.
+    import random
+
+    MAX_CONCURRENT_CRITERIA = 9  # Half of 18 criteria - balance speed vs rate limits
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_CRITERIA)
+
+    async def assess_with_jitter(
+        criterion: Criterion,
+    ) -> tuple[str, CriterionAnswer, str]:
+        # Minimal jitter - let backend retry handle rate limits
+        await asyncio.sleep(random.uniform(0.1, 0.3))
+        async with semaphore:
+            return await assess_criterion(backend, criterion, conversation)
+
+    tasks = [assess_with_jitter(c) for c in applicable]
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Process results - errors become ERROR status
