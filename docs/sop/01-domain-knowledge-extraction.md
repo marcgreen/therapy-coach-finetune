@@ -285,6 +285,36 @@ Week 5+: Scale generation
 
 ---
 
+## Lesson 6: Expert Review Catches What Automation Misses
+
+### The Problem
+
+A transcript scored 1.0 (perfect) by our automated assessor. Manual expert review found real issues:
+- Responses were 3-4x longer than user messages (should match length)
+- Premature psychological interpretations
+- Over-praising patterns ("That's profoundly...")
+
+### The Solution
+
+**Periodically sample transcripts for manual expert review**, especially:
+- Perfect scores (1.0) - Suspiciously high
+- Edge cases (0.79-0.81) - Near threshold
+- New persona types - Untested combinations
+
+Expert review revealed our CP2 (length matching) criterion was missing. After adding it, the "perfect" transcript dropped to 0.95.
+
+### Lessons Learned
+
+1. **Perfect scores are suspicious.** If your assessor gives many 1.0 scores, it's probably missing something.
+
+2. **Claude rates Claude-generated content higher.** We discovered Claude gave perfect scores to transcripts where GPT-4 and Gemini found real issues. This is a form of self-bias.
+
+3. **New criteria emerge from expert review.** Our rubric evolved: 12 → 14 → 16 → 17 → 18 criteria. Each addition came from discovering failure modes the existing criteria missed.
+
+4. **Response length should match user length.** This wasn't in our original rubric. Expert review caught that 3-4x longer responses felt "preachy" even if content was good.
+
+---
+
 ## Artifact Checklist
 
 Before starting data generation, ensure you have:

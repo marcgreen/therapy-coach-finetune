@@ -145,6 +145,10 @@ PERSONA_TEMPLATE = {
    ```
    Without hard limits, all styles converge to verbose.
 
+4. **Writing style should be age-weighted.** Younger users (18-25) → more text-speak. Older users (45+) → more formal. This emerged from expert review noting homogeneous communication styles.
+
+5. **20% of personas should have NO flaw patterns.** Not everyone is difficult. Some users are clear communicators who know what they want. Initially we had 50% "no flaw" - too high. 20% feels realistic.
+
 ---
 
 ### Lesson 3: Assistant Prompt Engineering is Half the Battle
@@ -198,6 +202,16 @@ BAD: User: "I tried the grounding" -> You: "That's great! How did it go?"
      (They brought it up, not you—passive, not proactive)
 ```
 
+**5. Response Ending Variety (critical for CP5):**
+```markdown
+Vary how you end responses:
+- 40% end with a question
+- 40% end with a statement/reflection
+- 20% end with an offer ("If you want, we could explore...")
+
+DON'T end every response with a question - feels like interrogation.
+```
+
 #### Lessons Learned
 
 1. **Calibration examples in the prompt work.** Include 2-3 PASS/FAIL examples for each major criterion directly in the generation prompt. The generator learns from examples, not just instructions.
@@ -245,7 +259,38 @@ ASYNC TEXT THERAPY FORMAT:
 
 ## Part 2: Assessment Pipeline
 
-### Lesson 5: Multi-Backend Assessment Reveals Hidden Issues
+### Lesson 5: Conversation-Level Assessment (98% Cost Reduction)
+
+#### The Problem
+
+Our initial design assessed each criterion per-turn (18 criteria x N turns). For a 50-turn conversation, this meant 900+ API calls per transcript.
+
+#### The Solution
+
+Refactor to **conversation-level assessment**: evaluate the entire conversation once per criterion.
+
+```python
+# OLD: Turn-level (expensive)
+for turn in conversation:
+    for criterion in criteria:
+        assess(turn, criterion)  # 900 calls for 50 turns
+
+# NEW: Conversation-level (cheap)
+for criterion in criteria:
+    assess(full_conversation, criterion)  # 17 calls total
+```
+
+#### Lessons Learned
+
+1. **98% API cost reduction.** From 900+ calls to 17 calls per transcript. This made the project economically viable.
+
+2. **Conversation-level is actually BETTER for some criteria.** MT4/MT5 (history utilization) and CP4/CP5 (formulaic patterns) only make sense when seeing the full conversation.
+
+3. **Batch criteria when possible.** We eventually batched all 17 criteria into a single call with structured output, reducing to 1 call per transcript.
+
+---
+
+### Lesson 6: Multi-Backend Assessment Reveals Hidden Issues
 
 #### The Problem
 
@@ -320,9 +365,51 @@ class CriterionResult(BaseModel):
 
 3. **ERROR is a valid answer.** If the assessor can't evaluate a criterion, it should say so rather than guessing.
 
+4. **Use native --json-schema flag.** Claude CLI supports `--json-schema` natively. Don't prompt-hack for JSON - use the flag and read from `structured_output` field.
+
 ---
 
-### Lesson 7: Transcript-Level Quality Analysis
+### Lesson 8: LLMs Can't Count
+
+#### The Problem
+
+We asked the assessor to evaluate response length ratios (CP2). Results were inconsistent because LLMs estimate word counts poorly.
+
+#### The Solution
+
+**Pre-compute length statistics deterministically and inject them into the assessment prompt:**
+
+```python
+def compute_length_stats(conversation):
+    ratios = []
+    for exchange in conversation:
+        user_words = len(exchange["user"].split())
+        assistant_words = len(exchange["assistant"].split())
+        ratio = assistant_words / max(user_words, 1)
+        ratios.append(ratio)
+
+    return {
+        "avg_ratio": sum(ratios) / len(ratios),
+        "pct_over_2x": len([r for r in ratios if r > 2]) / len(ratios),
+        "max_ratio": max(ratios),
+    }
+
+# Inject into prompt:
+# "Length stats (pre-computed): avg_ratio=1.45, pct_over_2x=15%, max_ratio=2.3"
+# "Thresholds: PASS if avg < 1.5 AND pct_over_2x < 25%"
+```
+
+#### Lessons Learned
+
+1. **Never ask LLMs to count.** Pre-compute anything quantitative.
+
+2. **Provide thresholds explicitly.** Don't ask "Is the ratio reasonable?" Ask "Is avg_ratio < 1.5?"
+
+3. **This applies to any quantitative criterion:** Word counts, question counts, section counts, etc.
+
+---
+
+### Lesson 9: Transcript-Level Quality Analysis
 
 #### The Problem
 
@@ -372,9 +459,11 @@ for exchange in all_exchanges:
 
 3. **Track praise distribution across conversation arc.** If late-conversation praise is 2x early-conversation praise, the model learns artificial positivity escalation.
 
+4. **Topic headers are NOT formulaic.** We initially penalized bold markdown headers (`**Work stress:**`) as "formulaic structure." Wrong - they're good organization for multi-topic responses. Updated CP2/CP4 to evaluate content AFTER headers, not headers themselves.
+
 ---
 
-### Lesson 8: Fixup vs. Rejection Trade-offs
+### Lesson 10: Fixup vs. Rejection Trade-offs
 
 #### The Problem
 
@@ -492,6 +581,104 @@ def get_slice_points(total_turns, transcript_id):
    ```
 
 4. **Expected yield:** ~8-10 slices per 50-turn transcript.
+
+5. **Leakage-safe splitting is critical.** Split by transcript/persona FIRST, then slice within each split. Never let slices from the same transcript appear in both train and validation sets - this causes data contamination.
+
+---
+
+### Lesson 13: Infrastructure for Reliability
+
+#### The Problem
+
+Generating 1000+ transcripts takes hours. Any failure (API timeout, rate limit, crash) loses progress.
+
+#### The Solution
+
+**Checkpointing:**
+```python
+async def generate_with_checkpoints(personas, checkpoint_path):
+    completed = load_checkpoint(checkpoint_path)
+
+    for persona in personas:
+        if persona.id in completed:
+            continue
+
+        transcript = await generate_transcript(persona)
+
+        # Write immediately after each transcript
+        save_checkpoint(checkpoint_path, persona.id, transcript)
+```
+
+**Incremental transcript writing:**
+```python
+# Write after EACH exchange, not just at the end
+for turn in range(target_turns):
+    user_msg = await user_simulator(...)
+    assistant_msg = await therapist_generator(...)
+    exchanges.append({"user": user_msg, "assistant": assistant_msg})
+
+    # Save progress immediately
+    save_transcript(transcript_path, exchanges)
+```
+
+**Retry with exponential backoff:**
+```python
+from tenacity import retry, wait_exponential, stop_after_attempt
+
+@retry(
+    wait=wait_exponential(multiplier=2, min=5, max=60),
+    stop=stop_after_attempt(5)
+)
+async def api_call_with_retry(...):
+    ...
+```
+
+#### Lessons Learned
+
+1. **Write incrementally.** If generation crashes at turn 45 of 50, you don't lose turns 1-44.
+
+2. **MIN_TURNS_FOR_ASSESSMENT = 3.** Prevent gaming with very short conversations that trivially pass.
+
+3. **Rate limit handling varies by backend:**
+   - Claude: Exponential backoff, 7 attempts, 1-hour max wait
+   - Google: Extract retry delay from error message, use suggested wait
+   - OpenAI: Standard exponential backoff
+
+4. **Module-level client singleton.** Reuse connections across calls to avoid connection overhead.
+
+5. **Claude CLI silent failures.** Sometimes returns empty output on rate limits. Treat empty errors as retryable, log diagnostics.
+
+---
+
+### Lesson 14: Model Selection for Cost Optimization
+
+#### The Problem
+
+Using the same expensive model for everything wastes money. User simulation doesn't need the same quality as therapeutic responses.
+
+#### The Solution
+
+**Tier your models by task:**
+
+| Task | Model | Rationale |
+|------|-------|-----------|
+| User Simulation | Sonnet/Haiku | Generating messy human messages is easier |
+| Therapist Generation | Opus/Sonnet | Quality matters for training data |
+| Assessment | Sonnet/Gemini | Need accuracy, not creativity |
+
+```python
+# Separate backends for different roles
+user_msg = await user_simulator(model="haiku")  # Cheap
+assistant_msg = await therapist_generator(model="sonnet")  # Quality
+```
+
+#### Lessons Learned
+
+1. **Saves ~50% on generation costs.** User simulator with Haiku is 10x cheaper than Opus.
+
+2. **Assessment backend matters more than generation backend.** Cheap generation + strict assessment > expensive generation + lenient assessment.
+
+3. **Test quality before switching.** We validated that Haiku user simulation produced same pass rates as Sonnet before switching.
 
 ---
 

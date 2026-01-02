@@ -567,6 +567,108 @@ Scale linearly with dataset size and epochs.
 
 ---
 
+## Alternative: MLX Local Training (Apple Silicon)
+
+If you have an Apple Silicon Mac, you can train locally without HuggingFace Jobs:
+
+```bash
+# Install MLX
+pip install mlx-lm
+
+# Prepare data in MLX format
+python scripts/prepare_mlx_data.py
+
+# Train locally
+python -m mlx_lm.lora \
+    --model mlx-community/gemma-3-12b-it-8bit \
+    --train \
+    --data data/processed/mlx_training \
+    --iters 800 \
+    --batch-size 1 \
+    --lora-layers 16
+```
+
+### MLX Config Example
+
+```yaml
+# config/mlx_lora_config.yaml
+model: mlx-community/gemma-3-12b-it-8bit
+train: true
+data: data/processed/mlx_training
+iters: 800
+learning_rate: 1e-5
+batch_size: 1
+grad_accum_steps: 8
+lora_layers: 16
+mask_prompt: true  # Only compute loss on assistant turns
+```
+
+### Lessons Learned
+
+1. **MLX is slower but free.** ~4-6 hours for 1000 examples on M3 Max vs 2-3 hours on A10G.
+
+2. **8-bit quantized base model works.** `mlx-community/gemma-3-12b-it-8bit` trains fine.
+
+3. **mask_prompt=true is essential.** Only compute loss on assistant turns, not user turns or system prompt.
+
+4. **MLX adapter format differs.** Need to convert to HuggingFace format before merging with base model for GGUF export.
+
+---
+
+## Additional Dependencies Note
+
+Gemma 3 is a vision-language model architecture. Even for text-only fine-tuning, you need:
+
+```python
+# /// script
+# dependencies = [
+#     ...
+#     "pillow"  # Required for Gemma 3 even without images
+# ]
+# ///
+```
+
+Without Pillow, you get cryptic import errors about image processing.
+
+---
+
+## Test Locally Before Submitting
+
+**Critical:** Always test your training script locally with a tiny dataset before submitting to HF Jobs. Each failed job costs time and money.
+
+```python
+# Create a tiny test dataset (10 examples)
+tiny_dataset = dataset.select(range(10))
+
+# Test locally with CPU (slow but validates code)
+trainer = SFTTrainer(
+    model="google/gemma-3-12b-it",
+    train_dataset=tiny_dataset,
+    args=SFTConfig(
+        max_steps=2,  # Just 2 steps to verify setup
+        ...
+    ),
+    ...
+)
+
+# If this runs without errors, submit to HF Jobs
+```
+
+### What Local Testing Catches
+
+1. **Import errors** - Missing dependencies
+2. **API mismatches** - Wrong argument names
+3. **Data format issues** - Messages not in expected format
+4. **Token errors** - Auth problems with private repos
+
+### What Local Testing Doesn't Catch
+
+1. **GPU memory issues** - Only appear on actual GPU
+2. **Long training failures** - Convergence, learning rate issues
+3. **Hub push permissions** - Jobs token differs from local
+
+---
+
 ## Anti-Patterns to Avoid
 
 | Anti-Pattern | Why It Fails | Better Approach |
