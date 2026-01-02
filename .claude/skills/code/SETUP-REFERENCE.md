@@ -367,18 +367,49 @@ When guiding the user through the full pipeline:
 
 ---
 
-## Notes for Agent
+## Running Manually (For Humans)
 
-### Environment Variables
-User needs to set these before running scripts:
-- `OPENAI_API_KEY` (if using OpenAI)
-- `GOOGLE_API_KEY` (if using Google)
+### Setup
+
+```bash
+# Set environment variables
+export OPENAI_API_KEY="sk-..."      # If using OpenAI
+export GOOGLE_API_KEY="..."         # If using Google
+```
 
 ### Running Scripts
-With uv: `uv run python scripts/generate.py`
 
-### Checkpoint Resumption
-The checkpoint pattern handles crash recovery automatically. When scripts are re-run, they skip already-completed items via `load_checkpoint()`.
+```bash
+# Generate conversations
+uv run python scripts/generate.py
+
+# Assess conversations
+uv run python scripts/assess.py
+
+# Create training examples
+uv run python scripts/slice.py
+```
+
+### Resuming After Interruption
+
+Scripts automatically resume from where they left off. Just run the same command again — the checkpoint system skips already-completed items.
+
+### Checking Progress
+
+```bash
+# Count transcripts
+ls data/raw/transcripts/*.json | wc -l
+
+# View recent assessments
+tail -5 data/assessments/checkpoint.jsonl | jq '{id: .id, pass: .pass, score: .score}'
+
+# Count passed/failed
+cat data/assessments/checkpoint.jsonl | jq -s '[.[] | select(.pass == true)] | length'
+```
+
+---
+
+## Notes for Agent
 
 ### Customization Points
 The templates above use placeholder functions that need implementation:
