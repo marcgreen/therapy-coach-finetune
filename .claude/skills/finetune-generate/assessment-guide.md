@@ -1,0 +1,484 @@
+# Assessment Guide
+
+How to assess conversation quality, iterate on the assessor, and audit for hidden issues.
+
+---
+
+## Conversation-Level Assessment
+
+**Assess entire conversations, not individual turns.**
+
+### Why Conversation-Level?
+
+| Approach | API Calls | Cost | Quality |
+|----------|-----------|------|---------|
+| Per-turn, per-criterion | 17 × N turns | Very high | Misses conversation arc |
+| Per-turn, batched | N turns | High | Still misses arc |
+| **Conversation-level** | **17 calls** | **Low** | **Captures full context** |
+
+Conversation-level assessment:
+- 98% API cost reduction
+- Better for criteria that span turns (patterns, history use)
+- Captures relationship development, consistency
+
+### Implementation
+
+```python
+async def assess_transcript(transcript, backend="claude"):
+    results = {}
+
+    for criterion_id, criterion in CRITERIA.items():
+        prompt = build_assessment_prompt(
+            transcript=transcript,
+            criterion=criterion,
+        )
+
+        response = await call_llm(prompt, backend=backend)
+        results[criterion_id] = parse_response(response)
+
+    return results
+```
+
+**Further optimization:** Batch all criteria into a single call with structured output.
+
+---
+
+## Multi-Backend Assessment
+
+**A single LLM assessor has blind spots.**
+
+In the therapy project:
+- Claude gave transcript 1000 a perfect 1.0
+- Gemini caught 4 criterion failures
+- GPT-4 caught 3 criterion failures
+
+**20-30% of data that passes one assessor fails another.**
+
+### Strategy
+
+```python
+BACKENDS = ["claude", "gemini", "openai"]
+
+async def assess_with_multiple_backends(transcript):
+    results = {}
+
+    for backend in BACKENDS:
+        results[backend] = await assess_transcript(transcript, backend)
+
+    # Check for disagreement
+    scores = [compute_score(r) for r in results.values()]
+    if max(scores) - min(scores) > 0.15:
+        return {"status": "DISAGREEMENT", "results": results}
+
+    # Use strictest assessment
+    return min(results.values(), key=lambda r: compute_score(r))
+```
+
+### Backend Characteristics
+
+| Backend | Strengths | Weaknesses |
+|---------|-----------|------------|
+| Claude | Good overall | Often too lenient on own patterns |
+| Gemini | Catches structural issues | Sometimes inconsistent |
+| GPT-4 | Good at clinical labels, safety | Expensive |
+
+**Recommendation:** Use at least two backends. Take the stricter result.
+
+---
+
+## Structured Output
+
+**Free-form output is unreliable.** Use JSON schema:
+
+```python
+class CriterionResult(BaseModel):
+    answer: Literal["YES", "NO", "NA", "ERROR"]
+    reasoning: str  # Required explanation
+
+class AssessmentResult(BaseModel):
+    criteria: dict[str, CriterionResult]
+```
+
+**With Claude CLI:**
+```bash
+claude -p "$prompt" --json-schema "$schema" --output-format json
+```
+
+**Why require reasoning:**
+- Catches assessor confusion
+- Enables debugging
+- Reveals calibration issues
+
+---
+
+## Pre-Computed Statistics
+
+**LLMs can't count reliably.** Pre-compute anything quantitative:
+
+```python
+def compute_length_stats(conversation):
+    ratios = []
+    for exchange in conversation:
+        user_words = len(exchange["user"].split())
+        assistant_words = len(exchange["assistant"].split())
+        ratio = assistant_words / max(user_words, 1)
+        ratios.append(ratio)
+
+    return {
+        "avg_ratio": sum(ratios) / len(ratios),
+        "pct_over_2x": len([r for r in ratios if r > 2]) / len(ratios),
+        "max_ratio": max(ratios),
+    }
+
+# Inject into prompt:
+"""
+Length stats (pre-computed):
+- Average ratio: {avg_ratio:.2f}
+- Percent over 2x: {pct_over_2x:.0%}
+- Max ratio: {max_ratio:.2f}
+
+Threshold: PASS if avg < 1.5 AND pct_over_2x < 25%
+"""
+```
+
+**Applies to:** Word counts, question counts, section counts, any quantitative criterion.
+
+---
+
+## Assessor Iteration
+
+**The rubric is never "done."** It evolves as you discover issues.
+
+### When to Iterate
+
+| Observation | Action |
+|-------------|--------|
+| Criterion too strict (good transcripts failing) | Loosen wording, add borderline-pass examples |
+| Criterion too lenient (bad transcripts passing) | Tighten wording, add fail examples |
+| Backend disagreement | Add calibration examples for that criterion |
+| New failure mode discovered | Add new criterion |
+| Criterion rarely triggers | Consider removing or merging |
+
+### How to Iterate
+
+1. **Identify the issue** — Which criterion? What's the pattern?
+2. **Adjust wording** — Make the question clearer
+3. **Add calibration examples** — Show the edge cases
+4. **Re-assess affected transcripts** — Verify improvement
+5. **Document the change** — Track rubric evolution
+
+### Evolution is Normal
+
+The therapy project rubric evolved: 12 → 14 → 16 → 17 → 18 criteria.
+
+New criteria emerged from:
+- Multi-topic handling (MT1-MT7)
+- Response length (CP2)
+- Coaching continuity (MT7)
+
+Each addition came from discovering failure modes existing criteria missed.
+
+---
+
+## Fixup Strategy
+
+Some failures are fixable. Others require rejection.
+
+### Entailment-Preserving Fixup
+
+**Constraint:** Fixed response must naturally lead to user's next message.
+
+```python
+FIXUP_PROMPT = """
+Rewrite this response to fix the identified issue.
+
+CONSTRAINTS:
+1. Fix the specific problem: {issue_type}
+2. Keep the therapeutic insight
+3. CRITICAL: Rewrite must naturally lead to user's next message
+
+ORIGINAL RESPONSE:
+{problematic_response}
+
+USER'S NEXT MESSAGE (must still make sense after your rewrite):
+{next_user_message}
+
+If the fix would break continuity, return: UNFIXABLE
+"""
+```
+
+### When to Fix vs Reject
+
+| Failure Type | Action |
+|--------------|--------|
+| Assertive language | Fix — soften to tentative |
+| Clinical labels | Fix — remove diagnostic terms |
+| Safety gate failures | Reject or truncate |
+| Structural issues | Usually reject |
+| Broken continuity | Truncate at that point |
+
+### Fixup Statistics
+
+**If >30% of transcripts need fixup:** Generation prompts need revision.
+
+Don't rely on fixup as the solution — fix the root cause in generation.
+
+---
+
+## Audit Patterns
+
+**Rubric assessment catches individual failures. Audit catches systemic issues.**
+
+### Phrase Repetition
+
+Check for "model tells" — phrases used too frequently:
+
+```python
+SIGNATURE_PHRASES = [
+    "that's not nothing",
+    "i want to",
+    "that makes sense",
+    "that's actually",
+    "that's real",
+    "that's growth",
+]
+
+def check_phrase_repetition(transcripts):
+    phrase_counts = {p: 0 for p in SIGNATURE_PHRASES}
+    total_responses = 0
+
+    for transcript in transcripts:
+        for exchange in transcript["exchanges"]:
+            response = exchange["assistant"].lower()
+            total_responses += 1
+            for phrase in SIGNATURE_PHRASES:
+                if phrase in response:
+                    phrase_counts[phrase] += 1
+
+    # Red flag: Any phrase in >50% of responses
+    for phrase, count in phrase_counts.items():
+        if count / total_responses > 0.50:
+            print(f"WARNING: '{phrase}' appears in {count/total_responses:.0%}")
+```
+
+**Action:** Add overused phrases to anti-patterns list, regenerate.
+
+### Structural Rigidity
+
+Check for formulaic structure:
+
+```python
+def check_structural_rigidity(transcripts):
+    header_counts = []
+
+    for transcript in transcripts:
+        for exchange in transcript["exchanges"]:
+            # Count bold headers like **Topic:**
+            bold_count = exchange["assistant"].count("**") // 2
+            header_counts.append(bold_count)
+
+    # Red flag: 100% same structure
+    if len(set(header_counts)) == 1 and header_counts[0] > 3:
+        print(f"WARNING: All responses have exactly {header_counts[0]} headers")
+```
+
+**Note:** Topic headers are NOT formulaic. They're good structure for multi-topic responses. Evaluate content variety WITHIN the structure.
+
+### Response Length Distribution
+
+```python
+def check_length_ratios(transcripts):
+    ratios = []
+
+    for transcript in transcripts:
+        for exchange in transcript["exchanges"]:
+            user_len = len(exchange["user"].split())
+            asst_len = len(exchange["assistant"].split())
+            ratios.append(asst_len / max(user_len, 1))
+
+    avg_ratio = sum(ratios) / len(ratios)
+    pct_over_2x = len([r for r in ratios if r > 2]) / len(ratios)
+
+    if avg_ratio > 2.0:
+        print(f"WARNING: Average ratio {avg_ratio:.2f} exceeds 2x")
+    if pct_over_2x > 0.50:
+        print(f"WARNING: {pct_over_2x:.0%} of responses exceed 2x length")
+```
+
+### Praise Distribution
+
+Check for artificial positivity escalation:
+
+```python
+def check_praise_distribution(transcripts):
+    PRAISE_PATTERNS = ["that's great", "wonderful", "amazing", "fantastic"]
+
+    early_praise = 0
+    late_praise = 0
+    early_count = 0
+    late_count = 0
+
+    for transcript in transcripts:
+        exchanges = transcript["exchanges"]
+        midpoint = len(exchanges) // 2
+
+        for i, exchange in enumerate(exchanges):
+            response = exchange["assistant"].lower()
+            has_praise = any(p in response for p in PRAISE_PATTERNS)
+
+            if i < midpoint:
+                early_count += 1
+                if has_praise:
+                    early_praise += 1
+            else:
+                late_count += 1
+                if has_praise:
+                    late_praise += 1
+
+    early_rate = early_praise / early_count
+    late_rate = late_praise / late_count
+
+    if late_rate > 2 * early_rate:
+        print(f"WARNING: Late praise rate ({late_rate:.0%}) > 2x early ({early_rate:.0%})")
+```
+
+---
+
+## Slicing Strategy
+
+Create training examples from full transcripts:
+
+```
+50-turn transcript → ~8-10 training examples
+```
+
+### Random Slice Points
+
+```python
+MIN_CONTEXT = 3     # First slice at exchange 3 minimum
+MIN_GAP = 2         # At least 2 exchanges between slices
+MAX_GAP = 5         # At most 5 exchanges between slices
+
+def get_slice_points(total_turns, transcript_id):
+    # Seed by transcript ID for reproducibility
+    rng = random.Random(hash(transcript_id))
+
+    points = []
+    current = MIN_CONTEXT
+
+    while current <= total_turns:
+        points.append(current)
+        gap = rng.randint(MIN_GAP, MAX_GAP)
+        current += gap
+
+    # Always include final turn
+    if points[-1] != total_turns:
+        points.append(total_turns)
+
+    return points
+```
+
+### Token Validation
+
+Each slice must fit within your token budget:
+
+```python
+MAX_TOKENS = 16_000  # Based on token economics decision
+
+def validate_slice(transcript, slice_point):
+    messages = format_as_messages(transcript[:slice_point])
+    token_count = count_tokens(messages)
+
+    if token_count > MAX_TOKENS:
+        # Find largest valid slice
+        for i in range(slice_point - 1, MIN_CONTEXT - 1, -1):
+            if count_tokens(format_as_messages(transcript[:i])) <= MAX_TOKENS:
+                return i
+        return None  # Can't fit
+
+    return slice_point
+```
+
+### Leakage Prevention
+
+**Critical:** Split by transcript/persona FIRST, then slice within each split.
+
+```python
+# WRONG: Slice all, then split
+all_slices = [slice for t in transcripts for slice in get_slices(t)]
+train, val = random_split(all_slices)  # Leakage!
+
+# CORRECT: Split by transcript, then slice
+train_transcripts, val_transcripts = split_by_transcript(transcripts)
+train_slices = [slice for t in train_transcripts for slice in get_slices(t)]
+val_slices = [slice for t in val_transcripts for slice in get_slices(t)]
+```
+
+---
+
+## Infrastructure
+
+### Retry with Backoff
+
+```python
+from tenacity import retry, wait_exponential, stop_after_attempt
+
+@retry(
+    wait=wait_exponential(multiplier=2, min=5, max=60),
+    stop=stop_after_attempt(5)
+)
+async def call_llm(prompt, backend):
+    ...
+```
+
+**Backend-specific:**
+- Claude: 7 attempts, 1-hour max wait
+- Google: Extract retry delay from error message
+- OpenAI: Standard exponential backoff
+
+### Progress Tracking
+
+Track throughout generation:
+
+```python
+@dataclass
+class GenerationStats:
+    transcripts_generated: int = 0
+    transcripts_assessed: int = 0
+    transcripts_passed: int = 0
+    criterion_failures: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def pass_rate(self):
+        if self.transcripts_assessed == 0:
+            return 0
+        return self.transcripts_passed / self.transcripts_assessed
+```
+
+### Minimum Length Enforcement
+
+Prevent gaming with very short conversations:
+
+```python
+MIN_TURNS_FOR_ASSESSMENT = 3
+
+def assess_if_valid(transcript):
+    if len(transcript["exchanges"]) < MIN_TURNS_FOR_ASSESSMENT:
+        return {"status": "TOO_SHORT", "score": None}
+    return assess_transcript(transcript)
+```
+
+---
+
+## Cost Estimates
+
+Based on therapy project (Sonnet backend):
+
+| Task | Per-Transcript | Time |
+|------|----------------|------|
+| Generation (25-turn) | ~$0.10-0.15 | 2-3 min |
+| Assessment (17 criteria) | ~$0.05-0.08 | 1-2 min |
+| Multi-backend assessment | ~$0.15-0.20 | 3-5 min |
+| Fixup (if needed) | ~$0.03-0.05 | 30 sec |
+
+**Use Claude Code CLI for zero marginal cost** if you have unlimited usage.
