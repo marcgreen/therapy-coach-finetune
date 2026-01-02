@@ -19,11 +19,21 @@ Complete [finetune-generate](../finetune-generate/SKILL.md) first. You need:
 
 This skill covers **Supervised Fine-Tuning (SFT)** only. Other training methods (DPO, GRPO, GEPA) will hopefully be added in the future.
 
+## Related HuggingFace Skills
+
+Use these HuggingFace skills for an integrated workflow:
+
+| Skill | When to Use |
+|-------|-------------|
+| `model-trainer` | **Primary training skill** — Trackio integration, TRL patterns, HF Jobs submission |
+| `hugging-face-dataset-creator` | Push/manage datasets on HF Hub |
+| `hugging-face-evaluation-manager` | Add eval results to model cards after training |
+
 ## Outputs
 
 By the end of this phase, you will have:
 
-- [ ] Fine-tuned model (adapter on HuggingFace Hub or local)
+- [ ] Fine-tuned model (adapter on HuggingFace Hub)
 - [ ] Merged GGUF file for local deployment
 - [ ] `evaluation_report.md` — Statistical comparison of base vs fine-tuned
 
@@ -44,13 +54,28 @@ Format and upload your training data:
    ]}
    ```
 
-2. **Push to HuggingFace Hub** (for cloud training):
-   ```bash
-   huggingface-cli repo create username/dataset-name --type dataset --private
-   # Then push via datasets library
+2. **Push to HuggingFace Hub** using the datasets library:
+   ```python
+   from datasets import Dataset
+   import json
+
+   # Load your JSONL
+   examples = [json.loads(line) for line in open("training_data.jsonl")]
+
+   # Keep only the messages field for training
+   training_data = [{"messages": ex["messages"]} for ex in examples]
+
+   # Push to Hub
+   dataset = Dataset.from_list(training_data)
+   dataset.push_to_hub("username/dataset-name", private=True)
    ```
 
-3. **Verify access** — test loading the dataset before submitting training job
+3. **Verify access** — test loading the dataset before submitting training job:
+   ```python
+   from datasets import load_dataset
+   ds = load_dataset("username/dataset-name", split="train")
+   print(f"Loaded {len(ds)} examples")
+   ```
 
 **Optional:** Use `hugging-face-dataset-creator` skill for streamlined HF Hub dataset management.
 
@@ -62,7 +87,7 @@ Format and upload your training data:
 
 | Approach | Best For | Cost |
 |----------|----------|------|
-| **HuggingFace Jobs** | Fast, serverless GPU | ~$5-10 for 1K examples |
+| **HuggingFace Jobs** | Fast, serverless GPU | ~$5-15 for 1K examples |
 | **MLX Local** | Apple Silicon, free | 4-6 hours on M3 Max |
 | **Cloud GPU** | Full control, large jobs | Varies |
 
@@ -72,7 +97,32 @@ Format and upload your training data:
 
 ---
 
-### Step 3: Configure Training
+### Step 3: Select GPU Based on Context Length
+
+**Critical: Vocabulary size dominates memory at long contexts.**
+
+Logits are computed in FP32 regardless of quantization:
+- Formula: `vocab_size × sequence_length × 4 bytes`
+
+| Model | Vocab Size | Logits @ 16k tokens | GPU Required |
+|-------|-----------|---------------------|--------------|
+| **Gemma 3 12B** | 262K | ~17 GB | **A100** |
+| **Qwen3 14B** | 152K | ~10 GB | **A100** |
+| **Llama 3 8B** | 128K | ~8 GB | A10G or A100 |
+
+**GPU Selection Guide:**
+
+| Context Length | Gemma 3 (262K vocab) | Qwen3 (152K vocab) | Llama 3 (128K vocab) |
+|---------------|----------------------|--------------------|-----------------------|
+| 2048 tokens | A10G (24GB) | A10G (24GB) | A10G (24GB) |
+| 8192 tokens | A100 (80GB) | A10G (24GB) | A10G (24GB) |
+| 16384 tokens | **A100 (80GB)** | **A100 (80GB)** | A100 (80GB) |
+
+**Rule of thumb:** If your conversations average 8k+ tokens and you're using Gemma 3, use A100.
+
+---
+
+### Step 4: Configure Training
 
 **QLoRA parameters (typical):**
 ```python
@@ -86,47 +136,87 @@ peft_config = LoraConfig(
 )
 ```
 
-**Training hyperparameters:**
+**Training hyperparameters with Trackio:**
 ```python
 config = SFTConfig(
+    output_dir="model-name",
+    push_to_hub=True,
+    hub_model_id="username/model-name",
+    hub_strategy="every_save",  # Push checkpoints
+
+    # Quantization
+    model_init_kwargs={
+        "load_in_4bit": True,
+        "bnb_4bit_quant_type": "nf4",
+        "bnb_4bit_compute_dtype": torch.bfloat16,
+        "bnb_4bit_use_double_quant": True,
+        "device_map": "auto",
+    },
+
+    # Training
     num_train_epochs=3,
     per_device_train_batch_size=1,
     gradient_accumulation_steps=8,
     learning_rate=2e-4,
-    max_length=2048,  # Based on token economics from design
+    max_length=16384,  # Adjust based on GPU (see Step 3)
     bf16=True,
     gradient_checkpointing=True,
     optim="adamw_8bit",
+
+    # Logging & checkpointing
+    logging_steps=10,
+    save_strategy="steps",
+    save_steps=100,
+    save_total_limit=2,
+
+    # Trackio monitoring (RECOMMENDED)
+    report_to="trackio",
 )
 ```
-
-**Critical for large-vocabulary models (Gemma 3):**
-- Vocabulary size affects memory: 262K vocab = 8x larger logits than Llama
-- Reduce `max_length` on smaller GPUs (2048 for A10G with Gemma 3 12B)
 
 **Reference:** [training-guide.md#configuration](training-guide.md#configuration)
 
 ---
 
-### Step 4: Submit Training
+### Step 5: Submit Training
 
-**For HuggingFace Jobs:**
+**Use `hf jobs uv run` CLI:**
 
-1. **Use your actual token** (not `$HF_TOKEN` placeholder):
-   ```python
-   secrets={"HF_TOKEN": "hf_xxxxx"}  # Your actual token
-   ```
+```bash
+# CRITICAL: Flags MUST come BEFORE script path
+hf jobs uv run \
+    --flavor a100-large \
+    --timeout 6h \
+    --secrets HF_TOKEN \
+    scripts/train_model.py
+```
 
-2. **Submit and monitor:**
-   - Watch logs for training loss progression
-   - Expected: Loss decreases from ~2-3 to ~0.8-1.2 over 3 epochs
-   - Training time: ~2-3 hours for 1K examples on A10G
+**Common mistakes:**
+```bash
+# ❌ WRONG: flags after script (will be ignored!)
+hf jobs uv run train.py --flavor a100-large
+
+# ❌ WRONG: --secret (singular) instead of --secrets (plural)
+hf jobs uv run --secret HF_TOKEN train.py
+
+# ✅ CORRECT: flags before script
+hf jobs uv run --flavor a100-large --secrets HF_TOKEN train.py
+```
+
+**Monitor training:**
+```bash
+hf jobs ps                    # List jobs
+hf jobs logs <job_id>         # View logs
+hf jobs inspect <job_id>      # Job details
+```
+
+**Trackio dashboard:** `https://huggingface.co/spaces/username/trackio`
 
 **Reference:** [training-guide.md#hf-jobs](training-guide.md#hf-jobs)
 
 ---
 
-### Step 5: GGUF Conversion
+### Step 6: GGUF Conversion
 
 Convert the fine-tuned adapter to GGUF for local inference:
 
@@ -151,7 +241,7 @@ Convert the fine-tuned adapter to GGUF for local inference:
 
 ---
 
-### Step 6: Evaluation
+### Step 7: Evaluation
 
 Compare fine-tuned model against base model using full-conversation generation.
 
@@ -188,7 +278,7 @@ improvement = np.mean(finetuned_scores) - np.mean(base_scores)
 
 ---
 
-### Step 7: Sanity Checks
+### Step 8: Sanity Checks
 
 Before declaring success, verify:
 
@@ -221,10 +311,24 @@ Before declaring success, verify:
 |-----------------|---------|
 | "Perplexity improved, we're done" | Low perplexity ≠ good conversations. Full-conversation eval required. |
 | "It feels better, ship it" | Feelings aren't evidence. Run statistical comparison (p<0.05). |
-| "Default hyperparameters are fine" | Large-vocab models (Gemma 3) OOM with defaults. Check max_length. |
+| "Default hyperparameters are fine" | Large-vocab models (Gemma 3) OOM with defaults. Check max_length and GPU. |
 | "Skip GGUF, we'll deploy later" | GGUF conversion is the deployment. Test locally before declaring success. |
 | "Safety check is paranoid" | Fine-tuning can introduce regressions. Safety audit is mandatory. |
-| "$HF_TOKEN will work" | The placeholder resolves to limited OAuth token. Use your actual token. |
+| "A10G is fine for everything" | Gemma 3 with 16k context needs A100 due to 262K vocabulary. |
+
+---
+
+## Model Naming Conventions
+
+Different model families use different naming conventions for instruction-tuned variants:
+
+| Family | Base Model | Instruction-Tuned |
+|--------|-----------|-------------------|
+| **Gemma 3** | `google/gemma-3-12b` | `google/gemma-3-12b-it` (add `-it`) |
+| **Qwen3** | `Qwen/Qwen3-14B-Base` | `Qwen/Qwen3-14B` (base has `-Base` suffix) |
+| **Llama 3** | `meta-llama/Llama-3-8B` | `meta-llama/Llama-3-8B-Instruct` |
+
+**For SFT fine-tuning, always use the instruction-tuned variant** to preserve instruction-following capabilities.
 
 ---
 
@@ -242,13 +346,15 @@ Before declaring success, verify:
 
 | Resource | What It Contains |
 |----------|------------------|
+| [training-guide.md](training-guide.md) | Complete training guide with Trackio, CLI syntax, troubleshooting |
 | [code/SETUP-REFERENCE.md](../code/SETUP-REFERENCE.md) | Project structure, script templates |
 | [code/infrastructure.py](../code/infrastructure.py) | Copy-paste ready: token counting, slice generation |
 | [examples/therapy-domain.md](../examples/therapy-domain.md) | Complete therapy example: evaluation results, model choice |
 
-**HuggingFace Hub integration (optional skills):**
+**HuggingFace Hub integration (skills):**
 | Skill | Use For |
 |-------|---------|
+| `model-trainer` | Primary HF training skill with Trackio, TRL patterns |
 | `hugging-face-dataset-creator` | Push/manage datasets on HF Hub |
 | `hugging-face-evaluation-manager` | Add eval results to model cards |
 

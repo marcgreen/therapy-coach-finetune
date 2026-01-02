@@ -8,7 +8,7 @@ How to run fine-tuning and evaluate improvement.
 
 | Option | Best For | Cost | Setup |
 |--------|----------|------|-------|
-| **HuggingFace Jobs** | Fast iteration, serverless | ~$5-10/1K examples | Minimal |
+| **HuggingFace Jobs** | Fast iteration, serverless | ~$5-15/1K examples | Minimal |
 | **MLX Local** | Apple Silicon, free | Free (time) | Moderate |
 | **Cloud GPU** | Full control, large jobs | Varies | Complex |
 
@@ -20,56 +20,80 @@ How to run fine-tuning and evaluate improvement.
 
 ### Prerequisites
 
-1. **HuggingFace Pro subscription** ($9/month)
+1. **HuggingFace Pro subscription** ($9/month) or Team/Enterprise
 2. **Prepaid credits** for GPU time
-3. **Token with ALL write permissions** (including Spaces management)
+3. **Logged in:** `hf auth login`
 4. **Gated model access** (accept license for Gemma, Llama, etc.)
 
-### Critical Pre-flight
+### GPU Selection Based on Context Length
 
-**Create output repos locally before submitting:**
+**Critical: Vocabulary size dominates memory at long contexts.**
 
-```bash
-huggingface-cli repo create username/model-name --type model --private
-huggingface-cli repo create username/dataset-name --type dataset --private
+Logits are computed in FP32 regardless of quantization:
+```
+memory = vocab_size × sequence_length × 4 bytes
 ```
 
-Jobs environment has limited permissions. Create repos with your full-permission CLI first.
+| Model | Vocab Size | Logits @ 2k | Logits @ 8k | Logits @ 16k |
+|-------|-----------|-------------|-------------|--------------|
+| **Gemma 3** | 262K | 2.1 GB | 8.6 GB | **17.2 GB** |
+| **Qwen3** | 152K | 1.2 GB | 5.0 GB | **10.0 GB** |
+| **Llama 3** | 128K | 1.0 GB | 4.2 GB | 8.4 GB |
+
+**GPU Selection:**
+
+| Context Length | Gemma 3 (262K vocab) | Qwen3/Llama (128-152K vocab) |
+|---------------|----------------------|------------------------------|
+| ≤2048 tokens | A10G (24GB) ~$1.50/hr | A10G (24GB) |
+| ≤8192 tokens | **A100 (80GB)** ~$4/hr | A10G (24GB) |
+| ≤16384 tokens | **A100 (80GB)** | **A100 (80GB)** |
+
+**Rule of thumb:** Gemma 3 with 8k+ context → A100. Others can use A10G up to 8k.
 
 ### Known Issues
 
-**Issue 1: Token Permission Mismatch**
+**Issue 1: CLI Syntax**
 
-The `$HF_TOKEN` placeholder resolves to a limited OAuth token, not your personal token.
+Flags MUST come BEFORE the script path:
 
-```python
-# WRONG: Uses limited session token
-secrets={"HF_TOKEN": "$HF_TOKEN"}
+```bash
+# ✅ CORRECT
+hf jobs uv run --flavor a100-large --secrets HF_TOKEN train.py
 
-# CORRECT: Your actual token
-secrets={"HF_TOKEN": "hf_xxxxxxxxxxxxxxxx"}
+# ❌ WRONG: flags after script (will be ignored!)
+hf jobs uv run train.py --flavor a100-large
+
+# ❌ WRONG: --secret (singular)
+hf jobs uv run --secret HF_TOKEN train.py
+
+# ❌ WRONG: command order
+hf jobs run uv train.py  # Should be "uv run"
 ```
 
-**Issue 2: Gemma 3 OOM (Large Vocabulary)**
+**Issue 2: Token Placeholder**
 
-Gemma 3 has 262K vocabulary (for vision-language). Logits are computed in full precision regardless of quantization.
+Use `--secrets HF_TOKEN` (without value) to pass your logged-in token:
 
-| Model | Vocab | Logits @ 4096 tokens |
-|-------|-------|----------------------|
-| Gemma 3 | 262K | 4.3 GB |
-| Llama 3 | 128K | 2.1 GB |
-| Mistral | 32K | 0.5 GB |
+```bash
+# ✅ CORRECT: passes your logged-in token
+hf jobs uv run --secrets HF_TOKEN train.py
 
-**Solution:** Reduce `max_length`:
-- A10G (24GB): max_length=2048
-- A100 (80GB): max_length=16384
+# ❌ WRONG: placeholder syntax (old docs)
+secrets={"HF_TOKEN": "$HF_TOKEN"}
+```
 
-**Issue 3: SFTTrainer API**
+**Issue 3: Gemma 3 OOM (Large Vocabulary)**
+
+Gemma 3 has 262K vocabulary. With default settings, you'll OOM.
+
+**Solution:** Use appropriate GPU for your context length (see table above).
+
+**Issue 4: SFTTrainer API**
 
 `model_init_kwargs` goes in `SFTConfig`, not `SFTTrainer`:
 
 ```python
-# CORRECT
+# ✅ CORRECT
 config = SFTConfig(
     model_init_kwargs={
         "load_in_4bit": True,
@@ -81,50 +105,141 @@ trainer = SFTTrainer(model="model-name", args=config, ...)
 
 Pass model name string, not loaded model. Tokenizer auto-loads.
 
-**Issue 4: Auto-Login Breaks Token Detection**
+**Issue 5: Auto-Login Breaks Token Detection**
 
 Don't call `login()`. The library auto-detects `HF_TOKEN` from environment:
 
 ```python
-# WRONG
+# ❌ WRONG
 from huggingface_hub import login
 login(token=os.environ.get("HF_TOKEN"))
 
-# CORRECT: Just use the library
+# ✅ CORRECT: Just use the library
 dataset = load_dataset("username/private-dataset")
 ```
 
-**Issue 5: Flash Attention Build Failure**
+**Issue 6: Flash Attention Build Failure**
 
 `flash-attn` requires torch during compilation. With `uv`, this fails.
 
 **Solution:** Don't use flash-attn with HF Jobs. Standard attention works fine on A10G/A100.
 
-### Working Script Template
+---
+
+## Trackio Integration
+
+**Trackio** provides real-time monitoring for training on HF Jobs. It syncs metrics to a HuggingFace Space for visualization.
+
+### Setup
+
+1. **Add trackio dependency:**
+```python
+# /// script
+# dependencies = [
+#     "trl>=0.12.0",
+#     "trackio",
+# ]
+# ///
+```
+
+2. **Initialize Trackio:**
+```python
+import trackio
+
+trackio.init(
+    project="my-project",
+    name="descriptive-run-name",
+    space_id="username/trackio",  # Auto-creates if doesn't exist
+    config={
+        "model": "google/gemma-3-12b-it",
+        "dataset": "username/dataset",
+        "max_length": 16384,
+        "epochs": 3,
+    },
+)
+```
+
+3. **Configure TRL:**
+```python
+config = SFTConfig(
+    report_to="trackio",
+    # ... other config
+)
+```
+
+4. **Finish tracking:**
+```python
+trainer.train()
+trackio.finish()  # Ensures final metrics synced
+```
+
+### What Trackio Tracks
+
+- Training loss
+- Evaluation loss (if eval_dataset provided)
+- Learning rate
+- GPU utilization
+- Memory usage
+
+### Dashboard
+
+View at: `https://huggingface.co/spaces/username/trackio`
+
+---
+
+## Working Script Template
+
+Complete template with Trackio:
 
 ```python
 # /// script
 # dependencies = [
 #     "trl>=0.12.0",
 #     "peft>=0.7.0",
-#     "transformers>=4.45.0",
-#     "accelerate>=0.25.0",
-#     "bitsandbytes>=0.41.0",
-#     "pillow"  # Required for Gemma 3 even without images
+#     "transformers>=4.51.0",
+#     "accelerate>=1.0.0",
+#     "bitsandbytes>=0.45.0",
+#     "datasets>=3.0.0",
+#     "trackio",
+#     "pillow",  # Required for Gemma 3
 # ]
 # ///
+"""Training script for HuggingFace Jobs."""
 
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
+import trackio
 import torch
 from datasets import load_dataset
 from peft import LoraConfig
 from trl import SFTTrainer, SFTConfig
 
-# HF_TOKEN auto-detected - DON'T call login()
-dataset = load_dataset("username/dataset", split="train")
+# Config
+MODEL_ID = "google/gemma-3-12b-it"
+DATASET_ID = "username/dataset-name"
+OUTPUT_REPO = "username/model-name"
+MAX_LENGTH = 16384  # A100 required for Gemma 3 at this length
 
+# Initialize Trackio
+trackio.init(
+    project="my-project",
+    name="gemma3-12b-sft",
+    space_id="username/trackio",
+    config={
+        "model": MODEL_ID,
+        "dataset": DATASET_ID,
+        "max_length": MAX_LENGTH,
+        "epochs": 3,
+    },
+)
+
+# Load dataset
+print("Loading dataset...")
+dataset = load_dataset(DATASET_ID, split="train")
+print(f"Loaded {len(dataset)} examples")
+
+# QLoRA config
 peft_config = LoraConfig(
     r=64,
     lora_alpha=128,
@@ -134,10 +249,12 @@ peft_config = LoraConfig(
     target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
 )
 
+# Training config
 config = SFTConfig(
     output_dir="model-name",
     push_to_hub=True,
-    hub_model_id="username/model-name",
+    hub_model_id=OUTPUT_REPO,
+    hub_strategy="every_save",
 
     model_init_kwargs={
         "load_in_4bit": True,
@@ -151,55 +268,78 @@ config = SFTConfig(
     per_device_train_batch_size=1,
     gradient_accumulation_steps=8,
     learning_rate=2e-4,
-    max_length=2048,  # Critical for Gemma 3 on A10G
+    lr_scheduler_type="cosine",
+    warmup_ratio=0.1,
+    max_length=MAX_LENGTH,
     bf16=True,
     gradient_checkpointing=True,
     optim="adamw_8bit",
-    report_to="none",
+
     logging_steps=10,
+    save_strategy="steps",
+    save_steps=100,
+    save_total_limit=2,
+
+    report_to="trackio",
 )
 
+# Train
 trainer = SFTTrainer(
-    model="google/gemma-3-12b-it",  # String, not loaded model
+    model=MODEL_ID,
     train_dataset=dataset,
     args=config,
     peft_config=peft_config,
 )
 
+print("Starting training...")
 trainer.train()
+
+print("Pushing to Hub...")
 trainer.push_to_hub()
+
+trackio.finish()
+print(f"Complete! Model at: https://huggingface.co/{OUTPUT_REPO}")
 ```
 
 ### Job Submission
 
-```python
-hf_jobs("uv", {
-    "script": "<script content>",
-    "flavor": "a10g-large",  # or "a100-large"
-    "timeout": "4h",
-    "secrets": {"HF_TOKEN": "hf_xxxxxxxx"}  # Your actual token
-})
+```bash
+# CRITICAL: flags BEFORE script path
+hf jobs uv run \
+    --flavor a100-large \
+    --timeout 6h \
+    --secrets HF_TOKEN \
+    scripts/train_model.py
 ```
-
-### GPU Selection
-
-| GPU | VRAM | Cost/hr | Max Length (Gemma 3 12B) |
-|-----|------|---------|--------------------------|
-| A10G | 24GB | ~$1.50 | 2048 (safe) |
-| A100 | 80GB | ~$4.00 | 16384 (safe) |
 
 ### Monitoring
 
-Without Trackio, monitor via job logs:
-- Step number / total steps
-- Training loss (should decrease)
-- Learning rate schedule
+```bash
+hf jobs ps                    # List jobs
+hf jobs logs <job_id>         # View logs
+hf jobs inspect <job_id>      # Job details
+hf jobs cancel <job_id>       # Cancel job
+```
 
 **Expected loss progression:**
 - Start: ~2-3
 - Epoch 1: ~1.5-2
 - Epoch 2: ~1.0-1.5
 - Epoch 3: ~0.8-1.2 (stabilizing)
+
+---
+
+## Model Naming Conventions
+
+Different model families use different naming for instruction-tuned variants:
+
+| Family | Base Model | Instruction-Tuned | Use For SFT |
+|--------|-----------|-------------------|-------------|
+| **Gemma 3** | `google/gemma-3-12b` | `google/gemma-3-12b-it` | `-it` version |
+| **Qwen3** | `Qwen/Qwen3-14B-Base` | `Qwen/Qwen3-14B` | Without `-Base` |
+| **Llama 3** | `meta-llama/Llama-3-8B` | `meta-llama/Llama-3-8B-Instruct` | `-Instruct` version |
+
+**Always use instruction-tuned for SFT** to preserve instruction-following capabilities.
 
 ---
 
@@ -223,21 +363,6 @@ python -m mlx_lm.lora \
     --iters 800 \
     --batch-size 1 \
     --lora-layers 16
-```
-
-### Configuration
-
-```yaml
-# config/mlx_lora_config.yaml
-model: mlx-community/gemma-3-12b-it-8bit
-train: true
-data: data/processed/mlx_training
-iters: 800
-learning_rate: 1e-5
-batch_size: 1
-grad_accum_steps: 8
-lora_layers: 16
-mask_prompt: true  # Only compute loss on assistant turns
 ```
 
 ### Key Lessons
@@ -293,13 +418,8 @@ python llama.cpp/convert_hf_to_gguf.py ./merged --outtype q4_k_m
 ### Step 4: Test Locally
 
 ```bash
-# Download
-huggingface-cli download username/model-gguf \
-    model-q4_k_m.gguf \
-    --local-dir ~/models/
-
 # Run
-llama-server -m ~/models/model-q4_k_m.gguf --port 8080 -ngl 99
+llama-server -m merged-q4_k_m.gguf --port 8080 -ngl 99
 ```
 
 ---
@@ -315,11 +435,6 @@ llama-server -m ~/models/model-q4_k_m.gguf --port 8080 -ngl 99
 | Benchmarks | General capability | Doesn't test your domain |
 | **Full-conversation** | **Actual use case** | **Most rigorous** |
 
-Full-conversation evaluation:
-- Tests multi-turn consistency
-- Captures context utilization
-- Uses your actual rubric
-
 ### Protocol
 
 1. **Generate NEW personas** (10-15, not used in training)
@@ -334,10 +449,9 @@ Full-conversation evaluation:
 from scipy import stats
 import numpy as np
 
-base_scores = [...]      # From base model conversations
-finetuned_scores = [...]  # From fine-tuned conversations
+base_scores = [...]
+finetuned_scores = [...]
 
-# Paired t-test (same personas)
 t_stat, p_value = stats.ttest_rel(finetuned_scores, base_scores)
 
 improvement = np.mean(finetuned_scores) - np.mean(base_scores)
@@ -356,44 +470,41 @@ print(f"Significant: {p_value < 0.05}")
 | Statistical significance | p < 0.05 |
 | Safety regressions | None |
 
-### Sanity Checks
-
-| Check | Purpose |
-|-------|---------|
-| Perplexity on held-out | Did training actually work? |
-| Human eval (5-10 convos) | Does LLM judge agree with humans? |
-| Capability regression | Didn't break general abilities |
-| Safety audit | No new harmful patterns |
-
 ---
 
 ## Troubleshooting
 
 ```
 Job fails immediately?
-├── "No module named X" → Check dependencies list
-├── "403 Forbidden" → Token permissions
-└── "Cannot create repo" → Pre-create repo locally
+├── "No module named X" → Check dependencies in PEP 723 header
+├── "403 Forbidden" → Accept gated model license, check token
+└── Timeout before start → Increase timeout, check script syntax
 
 Job fails during training?
-├── "CUDA out of memory" → Reduce max_length
-├── "TypeError: unexpected argument" → Check SFTTrainer API
+├── "CUDA out of memory" → Use larger GPU or reduce max_length (see GPU table)
+├── "TypeError: unexpected argument" → model_init_kwargs goes in SFTConfig
 └── "KeyError" during login → Remove login() call
 
 Training loss doesn't decrease?
 ├── Learning rate too high → Try 1e-4 or 5e-5
 ├── Data quality issue → Check assessment pass rate
 └── Model not loading correctly → Verify model_init_kwargs
+
+CLI issues?
+├── Flags ignored → Flags must come BEFORE script path
+├── "unrecognized arguments" → Use --secrets (plural), not --secret
+└── Job not found → Check hf auth login status
 ```
 
 ---
 
 ## Cost Estimates
 
-| Phase | Time | Cost (A10G) |
-|-------|------|-------------|
-| Training (1K examples, 3 epochs) | ~2-3 hours | ~$4-5 |
-| GGUF conversion | ~30 min | ~$0.75 |
-| **Total** | ~3-4 hours | ~$5-6 |
+| Hardware | Cost/hr | 1K examples (3 epochs) |
+|----------|---------|------------------------|
+| A10G | ~$1.50 | ~$4-5 (2-3 hours) |
+| A100 | ~$4.00 | ~$12-16 (3-4 hours) |
+
+**Note:** A100 required for Gemma 3 with 8k+ context, or any model with 16k+ context.
 
 Scale linearly with dataset size and epochs.
