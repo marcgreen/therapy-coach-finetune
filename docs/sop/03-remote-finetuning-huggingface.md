@@ -674,7 +674,6 @@ trainer = SFTTrainer(
 | Anti-Pattern | Why It Fails | Better Approach |
 |--------------|--------------|-----------------|
 | Using `$HF_TOKEN` placeholder | Resolves to limited OAuth token | Pass actual token directly |
-| Not pre-creating output repo | Jobs can't create repos | Create locally first |
 | Calling `huggingface_hub.login()` | Interferes with auto-detection | Let library auto-detect |
 | High `max_length` with Gemma | Vocabulary cost causes OOM | Use 2048 on A10G |
 | Including flash-attn | Build fails with uv | Use standard attention |

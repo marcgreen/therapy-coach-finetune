@@ -112,17 +112,12 @@ config = SFTConfig(
 
 **For HuggingFace Jobs:**
 
-1. **Pre-create output repo** (Jobs can't create repos):
-   ```bash
-   huggingface-cli repo create username/model-name --type model --private
-   ```
-
-2. **Use your actual token** (not `$HF_TOKEN` placeholder):
+1. **Use your actual token** (not `$HF_TOKEN` placeholder):
    ```python
    secrets={"HF_TOKEN": "hf_xxxxx"}  # Your actual token
    ```
 
-3. **Submit and monitor:**
+2. **Submit and monitor:**
    - Watch logs for training loss progression
    - Expected: Loss decreases from ~2-3 to ~0.8-1.2 over 3 epochs
    - Training time: ~2-3 hours for 1K examples on A10G
