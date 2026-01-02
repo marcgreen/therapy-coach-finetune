@@ -56,6 +56,10 @@ difficulty:
 
 How the user expresses themselves:
 
+> **Note:** Style names are domain-customizable. The examples below are generic.
+> Therapy might use: terse, text-speak, casual, formal, stream-of-consciousness.
+> Customer support might use: terse, frustrated, detailed, polite, demanding.
+
 ```yaml
 style:
   terse: 0.15           # "need help with X"

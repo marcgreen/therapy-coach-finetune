@@ -28,7 +28,7 @@ taxonomy:
       subtopics: [work_stress, social_anxiety, health_anxiety, general_worry, panic]
 
     - name: relationships
-      weight: 0.18
+      weight: 0.15
       subtopics: [romantic, family, friendship, coworker, loneliness]
 
     - name: life_transitions

@@ -140,20 +140,7 @@ flaw_application:
     - Some messages: Multiple flaws stacking (rough day)
 ```
 
-**Implementation:**
-```python
-def apply_flaws(persona, message_context):
-    active_flaws = []
-
-    if persona.primary_flaw and random.random() < 0.50:
-        active_flaws.append(persona.primary_flaw)
-
-    for flaw in persona.secondary_flaws:
-        if random.random() < 0.20:
-            active_flaws.append(flaw)
-
-    return active_flaws  # May be empty, one, or multiple
-```
+**Implementation:** See template section below for the `apply_flaws` function.
 
 ---
 
@@ -285,9 +272,9 @@ persona_template:
     options: [terse, casual, formal, verbose]
     weights: [0.15, 0.50, 0.25, 0.10]
     word_limits:
-      terse: [20, 60]
-      casual: [60, 150]
-      formal: [100, 200]
+      terse: [30, 80]
+      casual: [80, 180]
+      formal: [120, 250]
       verbose: [150, 300]
 
   # Behavior patterns (domain-specific)

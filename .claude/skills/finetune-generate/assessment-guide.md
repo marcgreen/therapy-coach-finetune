@@ -74,6 +74,18 @@ async def assess_with_multiple_backends(transcript):
     return min(results.values(), key=lambda r: compute_score(r))
 ```
 
+### Disagreement Resolution
+
+When backends disagree (spread > 0.15):
+
+| Pattern | Resolution |
+|---------|------------|
+| 2 pass, 1 fail | **Fail** — investigate the failure criterion |
+| All different scores | Review reasoning, add calibration examples |
+| Same verdict, different reasoning | Pass if verdict agrees, note for review |
+
+**Key principle:** False positives corrupt training data. When in doubt, reject.
+
 ### Backend Characteristics
 
 | Backend | Strengths | Weaknesses |
