@@ -1,15 +1,15 @@
-# Quickstart: Using the Infrastructure
+# Infrastructure Setup Reference
 
-How to integrate `infrastructure.py` into your fine-tuning project.
+**For the agent:** When helping users set up a fine-tuning project, use this reference to create the necessary files and project structure.
 
 ---
 
-## 1. Project Structure
+## Project Structure to Create
 
-Create this structure (adapt names for your domain):
+When setting up a new project, create this structure:
 
 ```
-my-finetune-project/
+{project-root}/
 ├── config/
 │   ├── taxonomy.yaml           # Input distribution (from taxonomy-guide)
 │   ├── rubric.yaml             # Evaluation criteria (from rubric-guide)
@@ -34,17 +34,20 @@ my-finetune-project/
 
 ---
 
-## 2. Copy Infrastructure
+## Files to Create
 
-```bash
-cp .claude/skills/code/infrastructure.py ./infrastructure.py
-```
+### 1. infrastructure.py
 
----
+Copy the contents of `code/infrastructure.py` into the user's project root. This provides:
+- LLM backend abstraction (OpenAI, Google, Claude CLI)
+- Retry strategies with rate limit handling
+- Checkpoint management
+- Slicing utilities
+- Assessment scoring
 
-## 3. Define Your Criteria
+### 2. criteria.py (Domain-Specific)
 
-Create `criteria.py` with your domain-specific evaluation criteria:
+Create `criteria.py` with the user's domain-specific evaluation criteria. Template:
 
 ```python
 # criteria.py
@@ -84,12 +87,11 @@ class AssessmentOutput(BaseModel):
     C8: CriterionResult
 ```
 
----
+### 3. scripts/generate.py
 
-## 4. Generate Conversations
+Create the generation script. Template:
 
 ```python
-# scripts/generate.py
 import asyncio
 from pathlib import Path
 from infrastructure import get_backend, append_checkpoint, load_checkpoint
@@ -149,12 +151,11 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
----
+### 4. scripts/assess.py
 
-## 5. Assess Conversations
+Create the assessment script. Template:
 
 ```python
-# scripts/assess.py
 import asyncio
 from pathlib import Path
 from infrastructure import (
@@ -266,12 +267,11 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
----
+### 5. scripts/slice.py
 
-## 6. Slice for Training
+Create the slicing script. Template:
 
 ```python
-# scripts/slice.py
 import json
 from pathlib import Path
 from infrastructure import get_slice_points, count_messages_tokens
@@ -321,12 +321,11 @@ if __name__ == "__main__":
     main()
 ```
 
----
+### 6. pyproject.toml Dependencies
 
-## 7. Dependencies
+Ensure the user's pyproject.toml includes:
 
 ```toml
-# pyproject.toml
 [project]
 dependencies = [
     "tenacity==8.2.3",
@@ -339,10 +338,12 @@ dependencies = [
 
 ---
 
-## Workflow Summary
+## Workflow Overview
+
+When guiding the user through the full pipeline:
 
 ```
-1. Design phase (finetune-design skill)
+1. Design phase (/finetune-design)
    ├── Define taxonomy, rubric, personas
    └── Create prompts
 
@@ -366,26 +367,24 @@ dependencies = [
 
 ---
 
-## Common Patterns
+## Notes for Agent
 
 ### Environment Variables
+User needs to set these before running scripts:
+- `OPENAI_API_KEY` (if using OpenAI)
+- `GOOGLE_API_KEY` (if using Google)
 
-```bash
-export OPENAI_API_KEY="sk-..."
-export GOOGLE_API_KEY="..."
-```
+### Running Scripts
+With uv: `uv run python scripts/generate.py`
 
-### Running with uv
+### Checkpoint Resumption
+The checkpoint pattern handles crash recovery automatically. When scripts are re-run, they skip already-completed items via `load_checkpoint()`.
 
-```bash
-uv run python scripts/generate.py
-uv run python scripts/assess.py
-uv run python scripts/slice.py
-```
-
-### Resuming After Crash
-
-The checkpoint pattern handles this automatically:
-- `load_checkpoint()` returns completed IDs
-- Skip already-processed items
-- `append_checkpoint()` writes immediately after each item
+### Customization Points
+The templates above use placeholder functions that need implementation:
+- `build_user_prompt()` — Uses persona and turn guidance
+- `build_assistant_prompt()` — Formats history and current message
+- `load_system_prompt()` — Reads from config/prompts/system.md
+- `load_personas()` — Generates from persona template
+- `load_transcripts()` — Reads from data/raw/transcripts/
+- `build_assessment_prompt()` — Formats transcript for evaluation

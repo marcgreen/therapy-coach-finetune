@@ -232,7 +232,7 @@ Before declaring success, verify:
 
 | Resource | What It Contains |
 |----------|------------------|
-| [code/QUICKSTART.md](../code/QUICKSTART.md) | Project structure, script templates, workflow summary |
+| [code/SETUP-REFERENCE.md](../code/SETUP-REFERENCE.md) | Project structure, script templates |
 | [code/infrastructure.py](../code/infrastructure.py) | Copy-paste ready: token counting, slice generation |
 | [examples/therapy-domain.md](../examples/therapy-domain.md) | Complete therapy example: evaluation results, model choice |
 
