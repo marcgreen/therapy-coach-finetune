@@ -15,6 +15,10 @@ Complete [finetune-generate](../finetune-generate/SKILL.md) first. You need:
 - [ ] Model choice from finetune-design
 - [ ] Evaluation rubric (for comparing base vs fine-tuned)
 
+## Scope: SFT Only
+
+This skill covers **Supervised Fine-Tuning (SFT)** only. Other training methods (DPO, GRPO, GEPA) will hopefully be added in the future.
+
 ## Outputs
 
 By the end of this phase, you will have:

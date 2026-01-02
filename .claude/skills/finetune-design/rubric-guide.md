@@ -131,7 +131,7 @@ na_invalid_criteria: [CQ1, CQ8, CP2, MT1, MT6]
 
 Without calibration examples:
 - Different LLM backends interpret criteria differently
-- Claude might pass what GPT-4 fails
+- Claude might pass what GPT-5 fails
 - 20-30% of your "passing" data may have subtle issues
 
 ### How Many Examples?

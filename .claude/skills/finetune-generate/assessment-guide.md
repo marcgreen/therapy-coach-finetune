@@ -50,7 +50,7 @@ async def assess_transcript(transcript, backend="claude"):
 In the therapy project:
 - Claude gave transcript 1000 a perfect 1.0
 - Gemini caught 4 criterion failures
-- GPT-4 caught 3 criterion failures
+- GPT-5 caught 3 criterion failures
 
 **20-30% of data that passes one assessor fails another.**
 
@@ -80,7 +80,7 @@ async def assess_with_multiple_backends(transcript):
 |---------|-----------|------------|
 | Claude | Good overall | Often too lenient on own patterns |
 | Gemini | Catches structural issues | Sometimes inconsistent |
-| GPT-4 | Good at clinical labels, safety | Expensive |
+| GPT-5 | Good at clinical labels, safety | Expensive |
 
 **Recommendation:** Use at least two backends. Take the stricter result.
 
@@ -158,6 +158,59 @@ Threshold: PASS if avg < 1.5 AND pct_over_2x < 25%
 | Backend disagreement | Add calibration examples for that criterion |
 | New failure mode discovered | Add new criterion |
 | Criterion rarely triggers | Consider removing or merging |
+
+### Expert Role-Play Critique (Required)
+
+**Stress-test your rubric by having Claude role-play domain experts who critique your criteria.**
+
+Different experts see different failure modes. A clinical psychologist catches different issues than a UX researcher than an AI safety researcher. Role-playing experts surfaces blind spots you'd otherwise miss.
+
+**When to do this:**
+- After initial rubric design (during finetune-design)
+- When you suspect the rubric is missing something
+- When pass rates are high but transcripts feel "off"
+- Periodically during generation (every other batch during refinement)
+
+**Process:**
+
+1. **Identify relevant expert perspectives for your domain:**
+   - Therapy → Clinical psychologists, DBT/CBT/ACT creators, patient advocates
+   - Customer support → Service design experts, accessibility advocates, angry customer personas
+   - Tutoring → Subject matter experts, learning scientists, struggling student personas
+
+2. **For each expert, prompt Claude to critique:**
+   ```
+   Role-play as [Expert Name/Type], a [credentials/perspective].
+
+   Critically review these evaluation criteria for [domain].
+   Focus on:
+   - What failure modes would this rubric miss?
+   - What would pass this rubric but still be harmful/inadequate?
+   - What would fail this rubric but actually be appropriate?
+   - Are there user populations this rubric doesn't serve?
+
+   Be constructively critical. Suggest specific improvements.
+   ```
+
+3. **Include fictional users for edge perspectives:**
+   - A skeptical user who's been burned before
+   - A vulnerable user in crisis
+   - A user from a different cultural context
+   - A user with non-standard communication patterns
+
+4. **Synthesize critiques into rubric improvements**
+
+**Therapy project example:**
+```
+Experts consulted:
+- Marsha Linehan (DBT creator) → Caught missing dialectical synthesis in validation criteria
+- William Miller (MI creator) → Identified that empowerment criteria missed solution origin
+- Irvin Yalom (existential therapy) → Added presence-without-insight as valid outcome
+- Emily Bender (computational linguist) → Reframed "AI cannot feel" to "user inference"
+- Percy Liang (LLM evaluation) → Switched from confirm-first to evidence-first reasoning
+```
+
+**Output:** Updated rubric criteria, new calibration examples, potentially new criteria.
 
 ### How to Iterate
 
@@ -355,13 +408,17 @@ Create training examples from full transcripts:
 ### Random Slice Points
 
 ```python
+import hashlib
+
 MIN_CONTEXT = 3     # First slice at exchange 3 minimum
 MIN_GAP = 2         # At least 2 exchanges between slices
 MAX_GAP = 5         # At most 5 exchanges between slices
 
-def get_slice_points(total_turns, transcript_id):
-    # Seed by transcript ID for reproducibility
-    rng = random.Random(hash(transcript_id))
+def get_slice_points(total_turns: int, transcript_id: str) -> list[int]:
+    """Generate random slice points with stable seeding."""
+    # Use SHA256 for stable seeding (Python's hash() varies between runs)
+    seed = int(hashlib.sha256(transcript_id.encode()).hexdigest()[:8], 16)
+    rng = random.Random(seed)
 
     points = []
     current = MIN_CONTEXT
@@ -421,20 +478,51 @@ val_slices = [slice for t in val_transcripts for slice in get_slices(t)]
 ### Retry with Backoff
 
 ```python
-from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception
 
 @retry(
-    wait=wait_exponential(multiplier=2, min=5, max=60),
+    retry=retry_if_exception(_is_rate_limit_error),
+    wait=wait_exponential(multiplier=1, min=2, max=60),
     stop=stop_after_attempt(5)
 )
 async def call_llm(prompt, backend):
     ...
 ```
 
-**Backend-specific:**
-- Claude: 7 attempts, 1-hour max wait
-- Google: Extract retry delay from error message
-- OpenAI: Standard exponential backoff
+**Backend-specific strategies:**
+
+| Backend | Attempts | Wait Strategy |
+|---------|----------|---------------|
+| Claude CLI | 10 | Fixed 1-hour (usage limit resets hourly) |
+| Google | 10 | Extract delay from error, fallback to exponential |
+| OpenAI | 5 | Standard exponential backoff |
+
+**Google's custom retry strategy** (extracts suggested delay from 429 errors):
+
+```python
+import re
+
+def _extract_google_retry_delay(exception: BaseException) -> float | None:
+    """Extract retryDelay from Google API error response.
+
+    Google 429 errors include RetryInfo: {'retryDelay': '16.412038513s'}
+    """
+    error_str = str(exception)
+    match = re.search(r"retryDelay['\"]:\s*['\"](\d+(?:\.\d+)?)s['\"]", error_str)
+    if match:
+        return float(match.group(1))
+    return None
+
+def _google_wait_strategy(retry_state) -> float:
+    """Use Google's suggested retry delay when available."""
+    exception = retry_state.outcome.exception() if retry_state.outcome else None
+    if exception:
+        delay = _extract_google_retry_delay(exception)
+        if delay is not None:
+            return delay + 1.0  # Add buffer
+    # Fallback: exponential backoff
+    return min(120.0, max(5.0, (2 ** retry_state.attempt_number) * 2))
+```
 
 ### Progress Tracking
 
@@ -468,6 +556,47 @@ def assess_if_valid(transcript):
     return assess_transcript(transcript)
 ```
 
+### Batch Checkpointing
+
+For crash-resilient batch processing, use JSONL append pattern:
+
+```python
+def load_checkpoint(checkpoint_path: Path) -> set[str]:
+    """Load completed conversation IDs from checkpoint file."""
+    if not checkpoint_path.exists():
+        return set()
+
+    completed = set()
+    with open(checkpoint_path) as f:
+        for line in f:
+            if line.strip():
+                try:
+                    record = json.loads(line)
+                    if "conversation_id" in record:
+                        completed.add(record["conversation_id"])
+                except json.JSONDecodeError:
+                    pass  # Skip malformed lines
+    return completed
+
+def append_checkpoint(checkpoint_path: Path, result: AssessmentResult) -> None:
+    """Append a result atomically (single write, immediate flush)."""
+    with open(checkpoint_path, "a") as f:
+        f.write(json.dumps(result.to_dict()) + "\n")
+```
+
+**Checkpoint structure (JSONL):**
+```json
+{"conversation_id": "transcript_5000", "pass": true, "score": 0.867, ...}
+{"conversation_id": "transcript_5001", "pass": false, "score": 0.733, ...}
+```
+
+**Resume pattern:**
+```python
+completed_ids = load_checkpoint(checkpoint_path)
+to_process = [c for c in conversations if c.id not in completed_ids]
+# Process only remaining conversations
+```
+
 ---
 
 ## Cost Estimates
@@ -482,3 +611,47 @@ Based on therapy project (Sonnet backend):
 | Fixup (if needed) | ~$0.03-0.05 | 30 sec |
 
 **Use Claude Code CLI for zero marginal cost** if you have unlimited usage.
+
+---
+
+## Operational Commands
+
+### Check Assessment Status
+
+```bash
+# Find unassessed transcripts
+python3 -c "
+import json
+from pathlib import Path
+
+transcripts = set(f.stem for f in Path('data/raw/transcripts').rglob('transcript_*.json')
+                 if '_backup' not in str(f))
+
+assessed = set()
+for cp in Path('data/assessments').glob('*.jsonl'):
+    for line in cp.read_text().strip().split('\n'):
+        if line:
+            assessed.add(json.loads(line).get('conversation_id', ''))
+
+unassessed = sorted(transcripts - assessed)
+print(f'Total: {len(transcripts)}, Assessed: {len(assessed)}, Unassessed: {len(unassessed)}')
+"
+```
+
+### View Assessment Results
+
+```bash
+# Last 5 assessments
+tail -5 data/assessments/checkpoint.jsonl | jq '{id: .conversation_id, pass: .pass, score: .score}'
+
+# All failed assessments
+cat data/assessments/*.jsonl | jq 'select(.pass == false) | {id: .conversation_id, score: .score, failed: .failed_checks}'
+```
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Rate limits | Use `concurrency=1`, exponential backoff |
+| Corrupt checkpoint | Filter valid lines: `cat checkpoint.jsonl \| jq -c '.' > fixed.jsonl` |
+| Missing API key | Set in `.env`: `GOOGLE_API_KEY=...` or `OPENAI_API_KEY=...` |

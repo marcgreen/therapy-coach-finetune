@@ -78,8 +78,11 @@ You iterate on TWO things, not one:
 | Assessment seems wrong | Assessor prompt, criteria wording |
 | Backend disagreement | Calibration examples for that criterion |
 | Missing failure mode | Add new criterion to rubric |
+| Pass rates high but something feels off | Run expert role-play critique |
 
 **The rubric is never "done."** In the therapy project, criteria evolved: 12 → 14 → 16 → 17 → 18.
+
+**Expert role-play critique is required** — periodically have Claude role-play domain experts to critique your rubric and small transcript batch directly. This catches blind spots invisible from your own perspective. See [assessment-guide.md#expert-role-play-critique](assessment-guide.md#expert-role-play-critique).
 
 ---
 
@@ -90,7 +93,7 @@ You iterate on TWO things, not one:
 For each batch of 5 transcripts:
 
 1. **Generate** 5 transcripts using two-agent simulation
-2. **Assess** with rubric using multiple backends (Claude, Gemini, GPT-4)
+2. **Assess** with rubric using multiple backends (Claude, Gemini, GPT-5)
 3. **Human reviews** both transcripts and assessments:
    - Read each transcript: Is this actually good?
    - Read each assessment: Did the rubric catch what matters?
