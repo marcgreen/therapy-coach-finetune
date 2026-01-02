@@ -1376,7 +1376,7 @@ async def assess_conversation(
     # arrive in bursts. Use moderate concurrency with delays for stability.
     import random
 
-    MAX_CONCURRENT_CRITERIA = 9  # Half of 18 criteria - balance speed vs rate limits
+    MAX_CONCURRENT_CRITERIA = 18  # Half of 18 criteria - balance speed vs rate limits
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_CRITERIA)
 
     async def assess_with_jitter(
