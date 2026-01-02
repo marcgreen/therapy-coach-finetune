@@ -216,8 +216,9 @@ Before committing to fine-tune, evaluate the base model on your rubric.
 
 | Resource | What It Contains |
 |----------|------------------|
-| [examples/therapy-domain.md](../examples/therapy-domain.md) | Complete therapy domain example: taxonomy, flaws, rubric criteria |
+| [code/QUICKSTART.md](../code/QUICKSTART.md) | Step-by-step integration guide with working examples |
 | [code/infrastructure.py](../code/infrastructure.py) | Copy-paste ready: LLM backend, checkpointing, slicing, scoring |
+| [examples/therapy-domain.md](../examples/therapy-domain.md) | Complete therapy domain example: taxonomy, flaws, rubric criteria |
 
 ---
 

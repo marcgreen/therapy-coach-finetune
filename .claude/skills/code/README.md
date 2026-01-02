@@ -2,6 +2,8 @@
 
 This directory contains domain-agnostic infrastructure code that can be copied directly into any multi-turn conversation fine-tuning project.
 
+**→ See [QUICKSTART.md](QUICKSTART.md) for step-by-step integration guide with working examples.**
+
 ## Files
 
 ### `infrastructure.py`

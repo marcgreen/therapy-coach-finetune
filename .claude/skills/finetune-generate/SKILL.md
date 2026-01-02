@@ -229,8 +229,9 @@ Track throughout generation:
 
 | Resource | What It Contains |
 |----------|------------------|
-| [examples/therapy-domain.md](../examples/therapy-domain.md) | Complete therapy example: prompts, flaw patterns, criteria |
+| [code/QUICKSTART.md](../code/QUICKSTART.md) | Step-by-step integration: generate.py, assess.py, slice.py |
 | [code/infrastructure.py](../code/infrastructure.py) | Copy-paste ready: LLM backend, retry strategies, checkpointing |
+| [examples/therapy-domain.md](../examples/therapy-domain.md) | Complete therapy example: prompts, flaw patterns, criteria |
 
 ---
 
