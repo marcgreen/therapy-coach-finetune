@@ -322,6 +322,10 @@ for turn in range(target_turns):
 
 ## Example: Therapy Project Prompts
 
+> **Adapt for your domain:** The therapy example below shows what elements to include.
+> For complete therapy prompts, see [examples/therapy-domain.md](../examples/therapy-domain.md).
+> For other domains, adapt the elements to your context.
+
 **User simulator key elements:**
 - Persona details (style, flaws, trajectory)
 - Full conversation history

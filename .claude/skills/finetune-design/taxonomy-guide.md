@@ -172,6 +172,9 @@ This creates natural variation. A "billing + terse + expert + skeptical" combina
 
 ## Example: Therapy Project
 
+> **Adapt for your domain:** This example uses therapy-specific topics
+> (anxiety, relationships, life_transitions). Replace with domain-relevant topics.
+
 ```yaml
 taxonomy:
   topics:
@@ -240,3 +243,139 @@ Before finalizing your taxonomy:
 | Uniform weights | Unrealistic distribution | Match real-world frequency |
 | Only "medium" difficulty | Model overconfident | Include genuinely hard cases |
 | Static taxonomy | Misses emerging patterns | Iterate based on failures |
+
+---
+
+## Template: Your Taxonomy
+
+Copy and adapt this template for your domain.
+
+### Complete Taxonomy Template
+
+```yaml
+# config/taxonomy.yaml
+taxonomy:
+  # ===================
+  # DIMENSION 1: WHAT (Content)
+  # ===================
+  topics:
+    - name: "[topic_1]"
+      weight: 0.XX           # Weights must sum to 1.0
+      subtopics:
+        - [subtopic_1a]
+        - [subtopic_1b]
+        - [subtopic_1c]
+
+    - name: "[topic_2]"
+      weight: 0.XX
+      subtopics:
+        - [subtopic_2a]
+        - [subtopic_2b]
+
+    - name: "edge_cases"
+      weight: 0.15           # Always allocate ~15% to edges
+      subtopics:
+        - out_of_scope       # Should trigger refusal/redirect
+        - boundary_violation # Inappropriate requests
+        - ambiguous_intent   # Unclear what they want
+        - hostile            # Aggressive, testing limits
+
+  difficulty:
+    easy: 0.30               # Clear intent, common scenarios
+    medium: 0.50             # Some ambiguity, requires judgment
+    hard: 0.20               # Edge cases, complex scenarios
+
+  # ===================
+  # DIMENSION 2: HOW (Communication Style)
+  # ===================
+  styles:
+    terse: 0.15              # Minimal words
+    conversational: 0.40     # Natural, flowing
+    detailed: 0.25           # Full context provided
+    emotional: 0.15          # Feelings prominent
+    analytical: 0.05         # Pattern-focused
+
+  # ===================
+  # DIMENSION 3: WHO (User Context)
+  # ===================
+  experience:
+    novice: 0.30             # New to domain
+    intermediate: 0.50       # Some familiarity
+    expert: 0.20             # Deep knowledge
+
+  # Domain-specific context (customize these)
+  context:
+    [context_dimension_1]: [options with weights]
+    [context_dimension_2]: [options with weights]
+
+  # ===================
+  # DIMENSION 4: RELATIONSHIP (Stance Toward Help)
+  # ===================
+  stance:
+    open: 0.40               # Ready to engage
+    skeptical: 0.25          # Doubtful it will help
+    testing: 0.15            # Probing boundaries
+    resistant: 0.20          # Doesn't want change
+
+  # ===================
+  # DIMENSION 5: PRESENTATION (Problem Structure)
+  # ===================
+  presentation:
+    clear: 0.40              # Obvious what's needed
+    vague: 0.25              # Needs clarification
+    multi_part: 0.20         # Several issues at once
+    buried: 0.15             # Real issue hidden
+```
+
+### Multi-Domain Topic Examples
+
+| Domain | Primary Topics | Edge Cases |
+|--------|----------------|------------|
+| **Customer Support** | billing, technical, account, shipping, returns, features | escalation_demand, legal_threat, competitor_mention, profanity |
+| **Tutoring** | concept_explanation, problem_solving, exam_prep, homework_help | do_my_homework, plagiarism_request, unrelated_subject, inappropriate |
+| **Sales/Onboarding** | product_features, pricing, comparison, integration, security | competitor_bashing, unrealistic_timeline, budget_mismatch, tire_kicker |
+| **Medical Triage** | symptom_assessment, medication_question, appointment, follow_up | emergency_symptoms, diagnosis_request, prescription_request, mental_health_crisis |
+
+### Multi-Domain Context Examples
+
+| Domain | Experience Levels | Domain-Specific Context |
+|--------|-------------------|------------------------|
+| **Customer Support** | new_customer, returning, power_user | plan_tier: [free, pro, enterprise], account_age: [new, established, long_term] |
+| **Tutoring** | beginner, developing, advanced | grade_level: [elementary, middle, high, college], learning_style: [visual, verbal, hands_on] |
+| **Sales** | cold_lead, warm_lead, existing_customer | deal_stage: [awareness, consideration, decision], company_size: [smb, mid_market, enterprise] |
+| **Medical** | first_visit, regular_patient, chronic_condition | urgency: [routine, concerning, urgent], insurance: [insured, uninsured, medicare] |
+
+### Sampling Implementation
+
+```python
+import random
+
+def weighted_choice(options: dict[str, float]) -> str:
+    """Select from weighted options."""
+    items = list(options.keys())
+    weights = list(options.values())
+    return random.choices(items, weights=weights, k=1)[0]
+
+def sample_input(taxonomy: dict) -> dict:
+    """Sample across all dimensions independently."""
+    return {
+        "topic": weighted_choice(taxonomy["topics"]),
+        "difficulty": weighted_choice(taxonomy["difficulty"]),
+        "style": weighted_choice(taxonomy["styles"]),
+        "experience": weighted_choice(taxonomy["experience"]),
+        "stance": weighted_choice(taxonomy["stance"]),
+        "presentation": weighted_choice(taxonomy["presentation"]),
+    }
+
+def sample_batch(taxonomy: dict, n: int) -> list[dict]:
+    """Generate n independent samples."""
+    return [sample_input(taxonomy) for _ in range(n)]
+```
+
+---
+
+## Domain Example
+
+> **Adapt for your domain:** The example in the guide uses therapy topics.
+> For other domains, see the multi-domain tables above and
+> [examples/therapy-domain.md](../examples/therapy-domain.md) for the complete therapy taxonomy.

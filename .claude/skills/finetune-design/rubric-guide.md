@@ -247,30 +247,6 @@ def passes(answers, score):
 
 ---
 
-## Example: Therapy Project Rubric
-
-**Categories and Weights:**
-
-| Category | Weight | Criteria |
-|----------|--------|----------|
-| Comprehension | 0.15 | CQ1, CQ2 |
-| Connection | 0.20 | CQ3, CQ6 |
-| Naturalness | 0.15 | CP2, CP4, CP5, CP6 |
-| Multi-topic | 0.30 | MT1, MT2, MT3, MT6 |
-| Context use | 0.20 | MT4, MT5, MT7 |
-
-**Safety Gates:** CQ8 (harmful patterns), CQ9 (crisis signals)
-
-**Pass Threshold:** 0.80
-
-**High-Calibration Criteria** (6-8 examples each):
-- CQ2: Mind-reading / assertive interpretations
-- CQ6: Premature interpretation
-- CP4: Formulaic language patterns
-- MT7: Coaching loop continuity
-
----
-
 ## Validation Checklist
 
 Before finalizing your rubric:
@@ -295,3 +271,86 @@ Before finalizing your rubric:
 | All criteria equal weight | Misses importance hierarchy | Category weighting |
 | Static rubric | Misses emerging failure modes | Iterate based on findings |
 | NA for everything | Assessor avoids judgment | Define NA-invalid criteria |
+
+---
+
+## Template: Your Rubric
+
+Copy and adapt this template for your domain.
+
+### Category Template
+
+```yaml
+# config/rubric.yaml
+categories:
+  [category_1]:           # e.g., accuracy, comprehension, relevance
+    weight: 0.XX          # Weights must sum to 1.0
+    criteria: [C1, C2]
+
+  [category_2]:           # e.g., helpfulness, engagement, tone
+    weight: 0.XX
+    criteria: [C3, C4, C5]
+
+  [category_3]:           # e.g., safety, policy_compliance
+    weight: 0.XX
+    criteria: [C6]
+
+safety_gates: [S1, S2]    # Auto-reject on failure
+pass_threshold: 0.80
+na_invalid: [C1, S1]      # Criteria where NA = failure
+```
+
+### Criterion Template
+
+```yaml
+[C1]:
+  name: "[Descriptive name]"
+  question: "[Binary question - must be YES/NO answerable]"
+  category: [category_name]
+  na_valid: [true|false]
+  min_turns: 1            # Minimum conversation length for this criterion
+
+  calibration_examples:
+    - type: PASS
+      context: |
+        [User message or conversation excerpt that triggers this criterion]
+      response: |
+        [Response that satisfies the criterion]
+      reasoning: |
+        [Why this passes - be specific about what makes it good]
+
+    - type: FAIL
+      context: |
+        [Same or similar trigger]
+      response: |
+        [Response that violates the criterion]
+      reasoning: |
+        [Why this fails - what rule was broken]
+
+    - type: BORDERLINE_PASS
+      context: |
+        [Edge case trigger]
+      response: |
+        [Response that barely passes]
+      reasoning: |
+        [Why PASS despite being imperfect - where the line is]
+```
+
+### Multi-Domain Category Examples
+
+| Domain | Categories | Safety Gates |
+|--------|------------|--------------|
+| **Customer Support** | resolution, tone, policy_compliance, efficiency | unauthorized_actions, pii_exposure |
+| **Tutoring** | concept_accuracy, pedagogy, engagement, scaffolding | harmful_content, scope_violation |
+| **Sales/Onboarding** | product_knowledge, objection_handling, rapport | misrepresentation, pressure_tactics |
+| **Medical Triage** | symptom_capture, urgency_assessment, empathy | diagnosis_attempt, treatment_advice |
+
+---
+
+## Domain Example
+
+> **Adapt for your domain:** The example below shows a therapy rubric.
+> For other domains, see [examples/therapy-domain.md](../examples/therapy-domain.md)
+> and replace criteria with domain-appropriate equivalents.
+
+**Therapy Project:** See [examples/therapy-domain.md](../examples/therapy-domain.md) for complete rubric with 18 criteria, calibration examples, and expert role-play critique results.

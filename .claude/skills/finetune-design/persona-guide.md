@@ -187,6 +187,9 @@ Initial distribution was 50% no-flaw — too high, felt unrealistic. 20% provide
 
 ## Example: Therapy Project Personas
 
+> **Adapt for your domain:** This example uses therapy-specific attributes
+> (attachment style, topic seeds). Replace with domain-relevant attributes.
+
 ```yaml
 persona_template:
   name: str
@@ -261,3 +264,77 @@ Before finalizing your persona template:
 | All users difficult | Unrealistic, skewed training | 20% no-flaw personas |
 | No word limits | Styles converge to verbose | Hard limits per style |
 | Static trajectory | Conversation feels flat | Situation evolves over time |
+
+---
+
+## Template: Your Personas
+
+Copy and adapt this template for your domain.
+
+### Persona Template
+
+```yaml
+# config/persona-template.yaml
+persona_template:
+  # Identity (for consistency)
+  name: str
+  background: str
+
+  # Communication
+  communication_style:
+    options: [terse, casual, formal, verbose]
+    weights: [0.15, 0.50, 0.25, 0.10]
+    word_limits:
+      terse: [20, 60]
+      casual: [60, 150]
+      formal: [100, 200]
+      verbose: [150, 300]
+
+  # Behavior patterns (domain-specific)
+  flaw_patterns:
+    primary: str | null           # 50% chance per message
+    secondary: list[str]          # 20% chance each per message
+
+  # Situation evolution
+  trajectory: Literal["stable", "improving", "deteriorating", "volatile"]
+
+  # Domain-specific attributes
+  # ... add your domain's relevant attributes
+```
+
+### Multi-Domain Flaw Examples
+
+| Domain | Communication Flaws | Resistance Flaws | Emotional Flaws |
+|--------|---------------------|------------------|-----------------|
+| **Customer Support** | vague_complaint, multiple_issues, wrong_product | escalation_threat, policy_challenge | frustration, entitlement |
+| **Tutoring** | shows_no_work, asks_for_answer, vague_confusion | gives_up_easily, claims_tried | test_anxiety, fixed_mindset |
+| **Sales** | price_focused, competitor_comparison | objection_stacking, ghosting | decision_paralysis, fomo |
+| **Medical Triage** | symptom_underreporting, dr_google, multiple_concerns | treatment_refusal, skepticism | health_anxiety, denial |
+
+### Flaw Application Pattern
+
+```python
+def apply_flaws(persona, message_number: int) -> list[str]:
+    """Apply flaws probabilistically per message."""
+    active_flaws = []
+
+    # Primary flaw: 50% chance per message
+    if persona.primary_flaw and random.random() < 0.50:
+        active_flaws.append(persona.primary_flaw)
+
+    # Secondary flaws: 20% chance each
+    for flaw in persona.secondary_flaws:
+        if random.random() < 0.20:
+            active_flaws.append(flaw)
+
+    return active_flaws  # May be empty, one, or multiple
+```
+
+---
+
+## Domain Example
+
+> **Adapt for your domain:** The example in the guide uses therapy personas.
+> Replace flaw patterns with domain-appropriate equivalents.
+
+**Therapy Project:** See [examples/therapy-domain.md](../examples/therapy-domain.md) for complete flaw taxonomy with 20+ patterns across 4 categories.

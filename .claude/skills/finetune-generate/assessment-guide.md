@@ -201,6 +201,12 @@ Different experts see different failure modes. A clinical psychologist catches d
 4. **Synthesize critiques into rubric improvements**
 
 **Therapy project example:**
+
+> **Adapt for your domain:** Choose experts relevant to your domain.
+> Customer support → service design experts, accessibility advocates.
+> Tutoring → learning scientists, subject matter experts.
+> Sales → negotiation experts, ethical sales practitioners.
+
 ```
 Experts consulted:
 - Marsha Linehan (DBT creator) → Caught missing dialectical synthesis in validation criteria
@@ -285,6 +291,9 @@ Don't rely on fixup as the solution — fix the root cause in generation.
 ### Phrase Repetition
 
 Check for "model tells" — phrases used too frequently:
+
+> **Domain-specific:** These example phrases are from therapy.
+> For your domain, identify phrases that appear too often in your generated data.
 
 ```python
 SIGNATURE_PHRASES = [

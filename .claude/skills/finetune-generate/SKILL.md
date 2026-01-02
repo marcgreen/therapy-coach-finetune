@@ -225,6 +225,15 @@ Track throughout generation:
 
 ---
 
+## Resources
+
+| Resource | What It Contains |
+|----------|------------------|
+| [examples/therapy-domain.md](../examples/therapy-domain.md) | Complete therapy example: prompts, flaw patterns, criteria |
+| [code/infrastructure.py](../code/infrastructure.py) | Copy-paste ready: LLM backend, retry strategies, checkpointing |
+
+---
+
 ## Done When
 
 - [ ] Target training example count reached

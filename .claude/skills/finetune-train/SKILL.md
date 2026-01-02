@@ -228,6 +228,15 @@ Before declaring success, verify:
 
 ---
 
+## Resources
+
+| Resource | What It Contains |
+|----------|------------------|
+| [examples/therapy-domain.md](../examples/therapy-domain.md) | Complete therapy example: evaluation results, model choice |
+| [code/infrastructure.py](../code/infrastructure.py) | Copy-paste ready: token counting, slice generation |
+
+---
+
 ## What's Next?
 
 After successful fine-tuning:
