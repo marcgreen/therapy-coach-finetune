@@ -334,14 +334,19 @@ taxonomy:
 
 ### Multi-Domain Topic Examples
 
+These are examples, not a comprehensive list. Discover what matters for your domain through brainstorming, expert roleplay, and iteration.
+
 | Domain | Primary Topics | Edge Cases |
 |--------|----------------|------------|
 | **Customer Support** | billing, technical, account, shipping, returns, features | escalation_demand, legal_threat, competitor_mention, profanity |
 | **Tutoring** | concept_explanation, problem_solving, exam_prep, homework_help | do_my_homework, plagiarism_request, unrelated_subject, inappropriate |
 | **Sales/Onboarding** | product_features, pricing, comparison, integration, security | competitor_bashing, unrealistic_timeline, budget_mismatch, tire_kicker |
 | **Medical Triage** | symptom_assessment, medication_question, appointment, follow_up | emergency_symptoms, diagnosis_request, prescription_request, mental_health_crisis |
+| **???** | Your domain | Discovered through brainstorming, expert roleplay, and failed assessments |
 
 ### Multi-Domain Context Examples
+
+These are examples, not a comprehensive list. Discover what matters for your domain through brainstorming, expert roleplay, and iteration.
 
 | Domain | Experience Levels | Domain-Specific Context |
 |--------|-------------------|------------------------|
@@ -349,6 +354,7 @@ taxonomy:
 | **Tutoring** | beginner, developing, advanced | grade_level: [elementary, middle, high, college], learning_style: [visual, verbal, hands_on] |
 | **Sales** | cold_lead, warm_lead, existing_customer | deal_stage: [awareness, consideration, decision], company_size: [smb, mid_market, enterprise] |
 | **Medical** | first_visit, regular_patient, chronic_condition | urgency: [routine, concerning, urgent], insurance: [insured, uninsured, medicare] |
+| **???** | Your domain | Discovered through brainstorming, expert roleplay, and failed assessments |
 
 ### Sampling Implementation
 

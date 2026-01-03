@@ -100,7 +100,7 @@ def get_turn_guidance(turn, total_turns):
         return random.choice(TURN_GUIDANCE["late"])
 ```
 
-**Define guidance for your domain.** Examples by domain type:
+**Define guidance for your domain.** These are examples, not a comprehensive list. Discover what matters for your domain through brainstorming, expert roleplay, and iteration.
 
 | Domain | Early | Middle | Late |
 |--------|-------|--------|------|
@@ -108,6 +108,7 @@ def get_turn_guidance(turn, total_turns):
 | **Technical help** | Describe problem, share errors | Try suggestions, report results | Confirm resolution, ask follow-ups |
 | **Sales/consulting** | State needs, ask questions | Compare options, raise objections | Negotiate, decide |
 | **Tutoring** | Attempt problem, show confusion | Work through steps, make mistakes | Demonstrate understanding |
+| **???** | Your domain | Discovered through brainstorming, expert roleplay, and failed assessments |
 
 ### Behavioral Variation
 
@@ -138,7 +139,7 @@ def build_user_prompt(persona, history, turn_guidance):
     )
 ```
 
-**Example behaviors by domain:**
+**Example behaviors by domain.** These are examples, not a comprehensive list. Discover what matters for your domain through brainstorming, expert roleplay, and iteration.
 
 | Domain | Example Behaviors |
 |--------|-------------------|
@@ -146,6 +147,7 @@ def build_user_prompt(persona, history, turn_guidance):
 | **Technical help** | Incomplete error messages, wrong terminology, skipping steps, XY problem |
 | **Customer service** | Frustration, impatience, referencing competitors, threatening to cancel |
 | **Tutoring** | Guessing, pattern-matching without understanding, giving up too easily |
+| **???** | Your domain's behaviors - discovered through brainstorming, expert roleplay, and failed assessments |
 
 ### Message Length Enforcement
 

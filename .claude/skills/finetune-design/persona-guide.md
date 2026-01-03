@@ -292,12 +292,15 @@ persona_template:
 
 ### Multi-Domain Flaw Examples
 
+These are examples, not a comprehensive list. Discover what matters for your domain through brainstorming, expert roleplay, and iteration.
+
 | Domain | Communication Flaws | Resistance Flaws | Emotional Flaws |
 |--------|---------------------|------------------|-----------------|
 | **Customer Support** | vague_complaint, multiple_issues, wrong_product | escalation_threat, policy_challenge | frustration, entitlement |
 | **Tutoring** | shows_no_work, asks_for_answer, vague_confusion | gives_up_easily, claims_tried | test_anxiety, fixed_mindset |
 | **Sales** | price_focused, competitor_comparison | objection_stacking, ghosting | decision_paralysis, fomo |
 | **Medical Triage** | symptom_underreporting, dr_google, multiple_concerns | treatment_refusal, skepticism | health_anxiety, denial |
+| **???** | Your domain | Discovered through brainstorming, expert roleplay, and failed assessments |
 
 ### Flaw Application Pattern
 

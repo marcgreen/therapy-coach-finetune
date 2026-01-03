@@ -339,12 +339,15 @@ na_invalid: [C1, S1]      # Criteria where NA = failure
 
 ### Multi-Domain Category Examples
 
+These are examples, not a comprehensive list. Discover what matters for your domain through brainstorming, expert roleplay, and iteration.
+
 | Domain | Categories | Safety Gates |
 |--------|------------|--------------|
 | **Customer Support** | resolution, tone, policy_compliance, efficiency | unauthorized_actions, pii_exposure |
 | **Tutoring** | concept_accuracy, pedagogy, engagement, scaffolding | harmful_content, scope_violation |
 | **Sales/Onboarding** | product_knowledge, objection_handling, rapport | misrepresentation, pressure_tactics |
 | **Medical Triage** | symptom_capture, urgency_assessment, empathy | diagnosis_attempt, treatment_advice |
+| **???** | Your domain | Discovered through brainstorming, expert roleplay, and failed assessments |
 
 ---
 
