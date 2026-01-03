@@ -19,6 +19,7 @@ Expected training time: ~3-4 hours for 1294 examples, 3 epochs
 """
 
 import os
+from datetime import datetime
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
@@ -34,10 +35,15 @@ DATASET_ID = "marcgreen/therapeutic-coaching-v1"
 OUTPUT_REPO = "marcgreen/therapeutic-gemma3-12b"
 MAX_LENGTH = 16384  # A100 can handle this with Gemma 3
 
-# Initialize Trackio
+# Unique run name with timestamp to avoid collisions
+RUN_NAME = f"gemma3-12b-{datetime.now().strftime('%Y%m%d-%H%M')}"
+
+# Initialize Trackio BEFORE trainer to set project/run name
+# NOTE: TRL's report_to="trackio" may create a second run with defaults.
+# This is a known issue - our explicit init ensures we have a named run.
 trackio.init(
     project="therapeutic-coaching",
-    name="gemma3-12b-sft",
+    name=RUN_NAME,
     space_id="marcgreen/trackio",
     config={
         "model": MODEL_ID,

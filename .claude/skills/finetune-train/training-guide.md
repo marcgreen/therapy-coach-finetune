@@ -124,6 +124,25 @@ dataset = load_dataset("username/private-dataset")
 
 **Solution:** Don't use flash-attn with HF Jobs. Standard attention works fine on A10G/A100.
 
+**Issue 7: Trackio Dual Initialization (Concurrent Jobs)**
+
+When using `trackio.init()` + `report_to="trackio"`, you see TWO runs per job:
+
+```
+* Trackio project initialized: therapeutic-coaching  ← Your trackio.init()
+* Created new run: gemma3-12b-sft
+...
+* Trackio project initialized: huggingface          ← TRL's default
+* Created new run: marcgreen-1767396634
+```
+
+**Cause:** TRL's `report_to="trackio"` creates its own run instead of reusing your init.
+
+**Workaround:**
+- Same Trackio Space handles multiple runs fine (they're separated by name)
+- Add timestamp to run names to avoid collisions: `f"gemma3-12b-{datetime.now().strftime('%Y%m%d-%H%M')}"`
+- Your named run gets config metadata; TRL's default run gets actual metrics
+
 ---
 
 ## Trackio Integration
@@ -145,10 +164,14 @@ dataset = load_dataset("username/private-dataset")
 2. **Initialize Trackio:**
 ```python
 import trackio
+from datetime import datetime
+
+# Unique run name with timestamp (important for concurrent jobs)
+RUN_NAME = f"gemma3-12b-{datetime.now().strftime('%Y%m%d-%H%M')}"
 
 trackio.init(
     project="my-project",
-    name="descriptive-run-name",
+    name=RUN_NAME,
     space_id="username/trackio",  # Auto-creates if doesn't exist
     config={
         "model": "google/gemma-3-12b-it",
@@ -207,6 +230,8 @@ Complete template with Trackio:
 """Training script for HuggingFace Jobs."""
 
 import os
+from datetime import datetime
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 import trackio
@@ -221,10 +246,15 @@ DATASET_ID = "username/dataset-name"
 OUTPUT_REPO = "username/model-name"
 MAX_LENGTH = 16384  # A100 required for Gemma 3 at this length
 
+# Unique run name with timestamp (for concurrent jobs)
+RUN_NAME = f"gemma3-12b-{datetime.now().strftime('%Y%m%d-%H%M')}"
+
 # Initialize Trackio
+# NOTE: TRL's report_to="trackio" may create a second run with defaults.
+# This is a known issue - our explicit init ensures we have a named run.
 trackio.init(
     project="my-project",
-    name="gemma3-12b-sft",
+    name=RUN_NAME,
     space_id="username/trackio",
     config={
         "model": MODEL_ID,
