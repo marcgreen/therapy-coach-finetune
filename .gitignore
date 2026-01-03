@@ -1,4 +1,5 @@
 .env
+.DS_Store
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -7,3 +8,10 @@ output/
 models/
 logs/
 data/raw/generation_progress.txt
+
+# Large files - keep local, don't push
+adapters/
+*.safetensors
+data/processed/training_examples.jsonl
+data/assessments/*checkpoint*.jsonl
+*.gguf
