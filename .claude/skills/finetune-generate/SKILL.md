@@ -75,7 +75,7 @@ The human reviews BOTH transcripts AND assessment results:
 | "Human review slows us down" | Skipping review = optimizing against broken metric. 1 hour of review saves days of bad data. |
 | "Pass rate is high, must be fine" | High pass rate with single backend misses 20-30% of issues. Multi-backend + human review required. |
 | "We can add calibration examples later" | Without calibration examples, backends disagree silently. Add them during design. |
-| "The rubric is complete" | Rubrics evolve (12→18 criteria in therapy project). New failure modes emerge. |
+| "The rubric is complete" | Rubrics evolve (e.g., 12→18 criteria). New failure modes emerge. |
 | "One assessor backend is enough" | Single backend gave transcript 1000 perfect 1.0; other backends caught 4 failures. |
 | "Let's just scale and filter later" | Scaling before 70% pass rate wastes compute. Fix prompts first. |
 
@@ -93,7 +93,7 @@ You iterate on TWO things, not one:
 | Missing failure mode | Add new criterion to rubric |
 | Pass rates high but something feels off | Run expert role-play critique |
 
-**The rubric is never "done."** In the therapy project, criteria evolved: 12 → 14 → 16 → 17 → 18.
+**The rubric is never "done."** In one project, criteria evolved: 12 → 14 → 16 → 17 → 18.
 
 **Expert role-play critique is required** — periodically have Claude role-play domain experts to critique your rubric and small transcript batch directly. This catches blind spots invisible from your own perspective. See [assessment-guide.md#expert-role-play-critique](assessment-guide.md#expert-role-play-critique).
 

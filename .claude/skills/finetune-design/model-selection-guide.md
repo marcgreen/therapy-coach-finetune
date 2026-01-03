@@ -64,7 +64,7 @@ Evaluate the model on your rubric BEFORE fine-tuning:
 
 ## Token Economics
 
-**Critical constraint discovered late in the therapy project.**
+**Critical constraint often discovered late in projects.**
 
 ### The 16K Rule
 
@@ -136,7 +136,7 @@ When evaluating candidates, score on:
 | Factor | Gemma 3 12B | Why It Worked |
 |--------|-------------|---------------|
 | Context | 128K | Supports very long conversations |
-| Base capability | 80% pass rate | Strong therapeutic baseline |
+| Base capability | 80% pass rate | Strong baseline for domain |
 | Quantization | QAT Q4 (7.5GB GGUF) | Runs well on Mac |
 | Speed | 31.5 tok/s on M3 Max | Acceptable for conversation |
 | Training | QLoRA support | Trainable on A10G |

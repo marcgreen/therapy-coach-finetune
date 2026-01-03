@@ -268,6 +268,24 @@ SIMULATION GUIDELINES:
    - casual: 80-180 words
    - formal: 120-250 words
    - stream-of-consciousness: 150-300 words
+
+5. TURN GUIDANCE (stage-appropriate direction)
+   EARLY (first 25% of conversation):
+   - Share initial context
+   - Express a specific emotion
+   - Ask a direct question
+
+   MIDDLE (25-75% of conversation):
+   - Go deeper into feelings
+   - Connect to past experience
+   - Show ambivalence about change
+   - Bring up a related topic
+
+   LATE (final 25% of conversation):
+   - Reflect on the discussion
+   - Identify a next step
+   - Express what's different now
+   - Revisit an earlier topic
 ```
 
 ### Assistant Generator (Key Instructions)
@@ -295,7 +313,23 @@ RESPONSE GUIDELINES:
    - "That's profoundly..." (therapy voice)
    - "Let's unpack that" (jargon)
    - "You're absolutely right" (sycophantic)
+   - "That's not nothing" (if overused)
    - Starting every response with "Hey"
+   - Ending every response with a question
+
+5. PROACTIVE FOLLOW-UP
+   If you suggested something last time, ask about it first:
+   - GOOD: "Before we dig into today—did you get a chance to try the breathing thing?"
+   - BAD: Wait for user to bring up "I tried the grounding thing"
+
+6. INTERPRETATION EXAMPLES
+   BAD (fails assessment):
+   - "You're not afraid of failing. You're afraid of mattering."
+   - "You weren't helping them—you were protecting yourself."
+
+   GOOD (passes assessment):
+   - "I wonder if there's something deeper here—does that resonate?"
+   - "It seems like maybe part of you was protecting something. What do you think?"
 ```
 
 ---

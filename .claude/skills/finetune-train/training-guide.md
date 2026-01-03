@@ -129,7 +129,7 @@ dataset = load_dataset("username/private-dataset")
 When using `trackio.init()` + `report_to="trackio"`, you see TWO runs per job:
 
 ```
-* Trackio project initialized: therapeutic-coaching  ← Your trackio.init()
+* Trackio project initialized: my-project  ← Your trackio.init()
 * Created new run: gemma3-12b-sft
 ...
 * Trackio project initialized: huggingface          ← TRL's default
@@ -453,7 +453,7 @@ hf download google/gemma-3-12b-it --local-dir ~/models/gemma3-12b-base
 **Step 2: Download Adapter**
 ```bash
 # Download adapter from HuggingFace
-hf download username/therapeutic-qwen3-14b --local-dir ./models/qwen3-therapeutic/adapter
+hf download username/my-finetuned-qwen3-14b --local-dir ./models/qwen3-finetuned/adapter
 ```
 
 **Step 3: Merge Adapter (bfloat16)**
@@ -462,8 +462,8 @@ Use `scripts/merge_lora_adapter.py`:
 ```bash
 uv run python scripts/merge_lora_adapter.py \
     --base-model ~/models/qwen3-14b-base \
-    --adapter-path ./models/qwen3-therapeutic/adapter \
-    --output-dir ./models/qwen3-therapeutic/merged
+    --adapter-path ./models/qwen3-finetuned/adapter \
+    --output-dir ./models/qwen3-finetuned/merged
 ```
 
 This loads in bfloat16 (~28GB RAM for 14B model) and saves the merged model.
@@ -473,16 +473,16 @@ This loads in bfloat16 (~28GB RAM for 14B model) and saves the merged model.
 # IMPORTANT: Use cloned llama.cpp, NOT Homebrew version
 uv run python ~/llama.cpp/convert_hf_to_gguf.py \
     --outtype bf16 \
-    --outfile ./models/qwen3-therapeutic/therapeutic-qwen3-14b-bf16.gguf \
-    ./models/qwen3-therapeutic/merged
+    --outfile ./models/qwen3-finetuned/my-finetuned-qwen3-14b-bf16.gguf \
+    ./models/qwen3-finetuned/merged
 ```
 
 **Step 5: Quantize**
 ```bash
 # Homebrew llama-quantize works fine for this step
 llama-quantize \
-    ./models/qwen3-therapeutic/therapeutic-qwen3-14b-bf16.gguf \
-    ./models/qwen3-therapeutic/therapeutic-qwen3-14b-q4_k_m.gguf \
+    ./models/qwen3-finetuned/my-finetuned-qwen3-14b-bf16.gguf \
+    ./models/qwen3-finetuned/my-finetuned-qwen3-14b-q4_k_m.gguf \
     Q4_K_M
 ```
 
@@ -490,7 +490,7 @@ Quantization reduces file size: 28GB (bf16) → 8.4GB (Q4_K_M).
 
 **Step 6: Test Locally**
 ```bash
-llama-server -m ./models/qwen3-therapeutic/therapeutic-qwen3-14b-q4_k_m.gguf --port 8080 -ngl 99
+llama-server -m ./models/qwen3-finetuned/my-finetuned-qwen3-14b-q4_k_m.gguf --port 8080 -ngl 99
 ```
 
 **Step 7: Upload to Hub (Optional)**
@@ -500,8 +500,8 @@ from huggingface_hub import HfApi, create_repo
 api = HfApi()
 create_repo("username/model-gguf", exist_ok=True)
 api.upload_file(
-    path_or_fileobj="therapeutic-qwen3-14b-q4_k_m.gguf",
-    path_in_repo="therapeutic-qwen3-14b-q4_k_m.gguf",
+    path_or_fileobj="my-finetuned-qwen3-14b-q4_k_m.gguf",
+    path_in_repo="my-finetuned-qwen3-14b-q4_k_m.gguf",
     repo_id="username/model-gguf",
 )
 ```
@@ -516,15 +516,15 @@ git clone https://github.com/ggerganov/llama.cpp ~/llama.cpp
 
 # Convert Qwen adapter to GGUF
 uv run python scripts/convert_to_gguf.py \
-    --adapter-repo username/therapeutic-qwen3-14b \
+    --adapter-repo username/my-finetuned-qwen3-14b \
     --base-model Qwen/Qwen3-14B \
-    --output-dir ./models/qwen3-therapeutic
+    --output-dir ./models/qwen3-finetuned
 
 # Convert AND upload to HuggingFace Hub
 uv run python scripts/convert_to_gguf.py \
-    --adapter-repo username/therapeutic-gemma3-12b \
+    --adapter-repo username/my-finetuned-gemma3-12b \
     --base-model google/gemma-3-12b-it \
-    --output-dir ./models/gemma3-therapeutic \
+    --output-dir ./models/gemma3-finetuned \
     --upload
 ```
 
@@ -574,10 +574,10 @@ uv run python scripts/generate_eval_personas.py --count 15
 llama-server -m gemma-3-12b-it.gguf --port 8080 -ngl 99
 
 # Terminal 2: Fine-tuned Gemma
-llama-server -m therapeutic-gemma.gguf --port 8081 -ngl 99
+llama-server -m finetuned-gemma.gguf --port 8081 -ngl 99
 
 # Terminal 3: Fine-tuned Qwen
-llama-server -m therapeutic-qwen.gguf --port 8082 -ngl 99
+llama-server -m finetuned-qwen.gguf --port 8082 -ngl 99
 ```
 
 **Step 3: Run 3-way comparison**

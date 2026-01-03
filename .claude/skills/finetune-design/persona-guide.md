@@ -239,6 +239,7 @@ Before finalizing your persona template:
 - [ ] Trajectory options defined
 - [ ] Distribution weights set
 - [ ] Domain-specific attributes included
+- [ ] Expert role-play critique applied (see [assessment-guide.md#expert-role-play-critique](../finetune-generate/assessment-guide.md#expert-role-play-critique))
 
 ---
 

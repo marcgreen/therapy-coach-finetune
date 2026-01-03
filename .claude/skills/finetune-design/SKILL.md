@@ -28,6 +28,29 @@ By the end of this phase, you will have:
 
 ---
 
+## Required Technique: Expert Role-Play Critique
+
+**Apply this to EVERY design artifact.** Role-play domain experts (real or fictional) to stress-test your designs before committing.
+
+| Apply To | Experts to Consider |
+|----------|---------------------|
+| **Taxonomy** | Domain practitioners, user researchers, edge case specialists |
+| **Rubric** | Quality experts, safety specialists, methodology creators |
+| **Personas** | User advocates, accessibility experts, diverse user representatives |
+| **Prompts** | Domain practitioners, AI safety researchers, communication experts |
+
+**Process:**
+1. Identify 5-7 relevant experts for your domain
+2. Have Claude role-play each expert critiquing your design
+3. Ask: "What would pass this but still be inadequate? What user populations does this miss?"
+4. Synthesize feedback into improvements
+
+**This catches blind spots invisible from your own perspective.** One project discovered 6 critical rubric gaps through expert critique that would have corrupted training data.
+
+**Full guide:** [assessment-guide.md#expert-role-play-critique](../finetune-generate/assessment-guide.md#expert-role-play-critique)
+
+---
+
 ## Workflow
 
 ### Step 1: Base Model Selection
@@ -81,6 +104,8 @@ Define the distribution of inputs to generate. A good taxonomy has multiple dime
 
 **Key lesson:** Allocate ~15% to edge cases. Without explicit representation, the model won't learn to handle them.
 
+**→ Apply Expert Role-Play:** Have domain experts critique your taxonomy for missing topics and user types.
+
 **Gate:** Weighted taxonomy with cross-product dimensions in `config/input-taxonomy.yaml`
 
 **Reference:** [taxonomy-guide.md](taxonomy-guide.md)
@@ -122,6 +147,8 @@ safety_gates: [CQ8, CQ9]  # Any failure = auto-reject
 pass_threshold: 0.80
 ```
 
+**→ Apply Expert Role-Play:** Have quality experts critique your criteria for blind spots and edge cases.
+
 **Gate:** Rubric with calibration examples in `config/rubric.yaml`
 
 **Reference:** [rubric-guide.md](rubric-guide.md)
@@ -139,6 +166,8 @@ Design user diversity for realistic training data.
 - Domain-specific attributes
 
 **Key lesson:** Flaws vary per message, not per conversation. Real people have good days and bad days.
+
+**→ Apply Expert Role-Play:** Have user advocates critique your personas for missing populations and unrealistic patterns.
 
 ```yaml
 persona_template:
@@ -175,6 +204,8 @@ Create the three prompts for data generation:
 - Question discipline: At most 1-2 questions per response
 - Anti-patterns list: Specific phrases to avoid
 
+**→ Apply Expert Role-Play:** Have domain experts critique your prompts for missing requirements and problematic patterns.
+
 **Gate:** All three prompts drafted
 
 **Reference:** [generation-guide.md](../finetune-generate/generation-guide.md) (in finetune-generate)
@@ -210,12 +241,14 @@ Before committing to fine-tune, evaluate the base model on your rubric.
 | "Calibration examples are overkill" | Without examples, backends interpret criteria differently. 20-30% disagreement. |
 | "Edge cases are rare, skip them" | Without 15% edge case representation, model fails at boundaries. |
 | "I know what users want, skip taxonomy" | Your intuition is biased. Formal taxonomy ensures coverage. |
+| "Expert role-play takes too long" | 1 hour of critique catches blind spots that corrupt 100+ transcripts. Do it. |
 
 ---
 
 ## Done When
 
 - [ ] All 8 output files created
+- [ ] Expert role-play critique applied to taxonomy, rubric, personas, and prompts
 - [ ] Base model evaluated against rubric
 - [ ] Decision to proceed with fine-tuning documented
 - [ ] Ready to start finetune-generate phase

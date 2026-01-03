@@ -233,39 +233,39 @@ pip install -r ~/llama.cpp/requirements.txt
 hf download Qwen/Qwen3-14B --local-dir ~/models/qwen3-14b-base
 
 # 3. Download adapter
-hf download username/therapeutic-qwen3-14b --local-dir ./models/qwen3-therapeutic/adapter
+hf download username/my-finetuned-qwen3-14b --local-dir ./models/qwen3-finetuned/adapter
 
 # 4. Merge adapter (bfloat16, ~28GB RAM)
 uv run python scripts/merge_lora_adapter.py \
     --base-model ~/models/qwen3-14b-base \
-    --adapter-path ./models/qwen3-therapeutic/adapter \
-    --output-dir ./models/qwen3-therapeutic/merged
+    --adapter-path ./models/qwen3-finetuned/adapter \
+    --output-dir ./models/qwen3-finetuned/merged
 
 # 5. Convert to GGUF
 uv run python ~/llama.cpp/convert_hf_to_gguf.py \
     --outtype bf16 \
-    --outfile ./models/qwen3-therapeutic/model-bf16.gguf \
-    ./models/qwen3-therapeutic/merged
+    --outfile ./models/qwen3-finetuned/model-bf16.gguf \
+    ./models/qwen3-finetuned/merged
 
 # 6. Quantize (Homebrew llama-quantize works)
 llama-quantize \
-    ./models/qwen3-therapeutic/model-bf16.gguf \
-    ./models/qwen3-therapeutic/model-q4_k_m.gguf \
+    ./models/qwen3-finetuned/model-bf16.gguf \
+    ./models/qwen3-finetuned/model-q4_k_m.gguf \
     Q4_K_M
 ```
 
 **Automated Script (Alternative):**
 ```bash
 uv run python scripts/convert_to_gguf.py \
-    --adapter-repo username/therapeutic-qwen3-14b \
+    --adapter-repo username/my-finetuned-qwen3-14b \
     --base-model Qwen/Qwen3-14B \
-    --output-dir ./models/qwen3-therapeutic \
+    --output-dir ./models/qwen3-finetuned \
     --upload
 ```
 
 **Test locally:**
 ```bash
-llama-server -m ./models/qwen3-therapeutic/model-q4_k_m.gguf --port 8080 -ngl 99
+llama-server -m ./models/qwen3-finetuned/model-q4_k_m.gguf --port 8080 -ngl 99
 ```
 
 **Reference:** [training-guide.md#gguf-conversion](training-guide.md#gguf-conversion)
@@ -292,9 +292,9 @@ uv run python scripts/generate_eval_personas.py --count 15
 # Terminal 1: Baseline
 llama-server -m gemma-3-12b-it.gguf --port 8080 -ngl 99
 # Terminal 2: Fine-tuned Gemma
-llama-server -m therapeutic-gemma.gguf --port 8081 -ngl 99
+llama-server -m finetuned-gemma.gguf --port 8081 -ngl 99
 # Terminal 3: Fine-tuned Qwen (if comparing multiple)
-llama-server -m therapeutic-qwen.gguf --port 8082 -ngl 99
+llama-server -m finetuned-qwen.gguf --port 8082 -ngl 99
 
 # Step 3: Run evaluation
 uv run python scripts/run_model_evaluation.py \

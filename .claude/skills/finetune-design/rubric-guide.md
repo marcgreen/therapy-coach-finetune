@@ -243,7 +243,7 @@ def passes(answers, score):
 | Too many false negatives | Loosen or add borderline examples |
 | Criterion rarely triggers | Consider removing or merging |
 
-**Therapy project evolution:** 12 → 14 → 16 → 17 → 18 criteria over the project lifetime.
+**Example evolution:** One project went 12 → 14 → 16 → 17 → 18 criteria over its lifetime.
 
 ---
 
@@ -258,6 +258,7 @@ Before finalizing your rubric:
 - [ ] 3-8 calibration examples per criterion
 - [ ] Borderline cases included for subjective criteria
 - [ ] Pass threshold defined (recommend 0.80)
+- [ ] Expert role-play critique applied (see [assessment-guide.md#expert-role-play-critique](../finetune-generate/assessment-guide.md#expert-role-play-critique))
 
 ---
 

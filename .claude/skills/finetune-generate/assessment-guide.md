@@ -47,10 +47,10 @@ async def assess_transcript(transcript, backend="claude"):
 
 **A single LLM assessor has blind spots.**
 
-In the therapy project:
-- Claude gave transcript 1000 a perfect 1.0
-- Gemini caught 4 criterion failures
-- GPT-5 caught 3 criterion failures
+In one project, the same transcript received:
+- Claude: perfect 1.0
+- Gemini: 4 criterion failures
+- GPT-5: 3 criterion failures
 
 **20-30% of data that passes one assessor fails another.**
 
@@ -123,6 +123,101 @@ claude -p "$prompt" --json-schema "$schema" --output-format json
 
 ---
 
+## Expert Role-Play Critique
+
+**Role-play domain experts to stress-test design artifacts.** This applies to ALL design phases—not just rubric refinement.
+
+Different experts see different failure modes. A domain practitioner catches different issues than a UX researcher than an AI safety researcher. Role-playing experts surfaces blind spots you'd otherwise miss.
+
+### When to Use This Technique
+
+| Phase | What to Critique | Why |
+|-------|-----------------|-----|
+| **Taxonomy design** | Topic categories, edge cases, weights | Ensure coverage, identify missing user types |
+| **Persona creation** | Communication styles, flaws, trajectories | Catch unrealistic patterns, missing populations |
+| **Prompt engineering** | User simulator, assistant generator prompts | Find instruction gaps, conflicting requirements |
+| **Rubric design** | Criteria, calibration examples, weights | Identify failure modes rubric would miss |
+| **Iteration** | Failed transcripts, passing-but-off transcripts | Diagnose systemic issues |
+
+### Process
+
+**Step 1: Identify relevant experts for your domain**
+
+Claude should identify experts based on the specific domain. Consider:
+
+- **Domain practitioners** — People who do the job the assistant is replacing/augmenting
+- **Methodology creators** — Founders of frameworks used in the domain
+- **Researchers** — Academics who study this domain
+- **User advocates** — People who represent different user populations
+- **AI/ML experts** — For evaluation methodology and safety
+
+**Example identification prompt:**
+```
+I'm designing [rubric/taxonomy/prompts] for a [domain] assistant.
+
+Identify 5-7 experts (real or fictional) whose perspectives would help stress-test this design:
+- At least 2 domain practitioners with different methodological approaches
+- At least 1 researcher who studies this domain critically
+- At least 1 advocate for a vulnerable user population
+- At least 1 AI/ML evaluation expert
+
+For each expert, provide:
+- Name and credentials/perspective
+- What unique blind spots they would catch
+- What they would be especially critical of
+```
+
+**Step 2: Role-play each expert's critique**
+
+```
+Role-play as [Expert Name], a [credentials/perspective].
+
+Critically review this [artifact type] for [domain]:
+
+[INSERT ARTIFACT]
+
+Focus on:
+- What failure modes would this miss?
+- What would pass this but still be harmful/inadequate?
+- What would fail this but actually be appropriate?
+- What user populations does this not serve well?
+- What assumptions are baked in that should be questioned?
+
+Be constructively critical. Suggest specific improvements.
+```
+
+**Step 3: Include fictional edge users**
+
+Beyond experts, role-play challenging users:
+- A skeptical user who's been burned before
+- A vulnerable user in crisis or distress
+- A user from a different cultural context
+- A user with non-standard communication patterns
+- A user who will try to game or break the system
+
+**Step 4: Synthesize into improvements**
+
+After gathering critiques, identify:
+- Common themes across experts
+- Contradictory advice (requires judgment call)
+- Quick wins vs fundamental redesigns
+- New criteria, calibration examples, or edge cases to add
+
+### Example: Therapy Domain
+
+```
+Experts identified and consulted:
+- Marsha Linehan (DBT creator) → Caught missing dialectical synthesis in validation criteria
+- William Miller (MI creator) → Identified that empowerment criteria missed solution origin
+- Irvin Yalom (existential therapy) → Added presence-without-insight as valid outcome
+- Emily Bender (computational linguist) → Reframed "AI cannot feel" to "user inference"
+- Percy Liang (LLM evaluation) → Switched from confirm-first to evidence-first reasoning
+```
+
+This technique improved the rubric more than any single refinement cycle.
+
+---
+
 ## Pre-Computed Statistics
 
 **LLMs can't count reliably.** Pre-compute anything quantitative:
@@ -170,65 +265,7 @@ Threshold: PASS if avg < 1.5 AND pct_over_2x < 25%
 | Backend disagreement | Add calibration examples for that criterion |
 | New failure mode discovered | Add new criterion |
 | Criterion rarely triggers | Consider removing or merging |
-
-### Expert Role-Play Critique (Required)
-
-**Stress-test your rubric by having Claude role-play domain experts who critique your criteria.**
-
-Different experts see different failure modes. A clinical psychologist catches different issues than a UX researcher than an AI safety researcher. Role-playing experts surfaces blind spots you'd otherwise miss.
-
-**When to do this:**
-- After initial rubric design (during finetune-design)
-- When you suspect the rubric is missing something
-- When pass rates are high but transcripts feel "off"
-- Periodically during generation (every other batch during refinement)
-
-**Process:**
-
-1. **Identify relevant expert perspectives for your domain:**
-   - Therapy → Clinical psychologists, DBT/CBT/ACT creators, patient advocates
-   - Customer support → Service design experts, accessibility advocates, angry customer personas
-   - Tutoring → Subject matter experts, learning scientists, struggling student personas
-
-2. **For each expert, prompt Claude to critique:**
-   ```
-   Role-play as [Expert Name/Type], a [credentials/perspective].
-
-   Critically review these evaluation criteria for [domain].
-   Focus on:
-   - What failure modes would this rubric miss?
-   - What would pass this rubric but still be harmful/inadequate?
-   - What would fail this rubric but actually be appropriate?
-   - Are there user populations this rubric doesn't serve?
-
-   Be constructively critical. Suggest specific improvements.
-   ```
-
-3. **Include fictional users for edge perspectives:**
-   - A skeptical user who's been burned before
-   - A vulnerable user in crisis
-   - A user from a different cultural context
-   - A user with non-standard communication patterns
-
-4. **Synthesize critiques into rubric improvements**
-
-**Therapy project example:**
-
-> **Adapt for your domain:** Choose experts relevant to your domain.
-> Customer support → service design experts, accessibility advocates.
-> Tutoring → learning scientists, subject matter experts.
-> Sales → negotiation experts, ethical sales practitioners.
-
-```
-Experts consulted:
-- Marsha Linehan (DBT creator) → Caught missing dialectical synthesis in validation criteria
-- William Miller (MI creator) → Identified that empowerment criteria missed solution origin
-- Irvin Yalom (existential therapy) → Added presence-without-insight as valid outcome
-- Emily Bender (computational linguist) → Reframed "AI cannot feel" to "user inference"
-- Percy Liang (LLM evaluation) → Switched from confirm-first to evidence-first reasoning
-```
-
-**Output:** Updated rubric criteria, new calibration examples, potentially new criteria.
+| Pass rates high but transcripts feel "off" | Use Expert Role-Play Critique (see above) |
 
 ### How to Iterate
 
@@ -240,7 +277,7 @@ Experts consulted:
 
 ### Evolution is Normal
 
-The therapy project rubric evolved: 12 → 14 → 16 → 17 → 18 criteria.
+One project's rubric evolved: 12 → 14 → 16 → 17 → 18 criteria.
 
 New criteria emerged from:
 - Multi-topic handling (MT1-MT7)
@@ -265,7 +302,7 @@ Rewrite this response to fix the identified issue.
 
 CONSTRAINTS:
 1. Fix the specific problem: {issue_type}
-2. Keep the therapeutic insight
+2. Keep the core insight/value
 3. CRITICAL: Rewrite must naturally lead to user's next message
 
 ORIGINAL RESPONSE:
@@ -304,8 +341,8 @@ Don't rely on fixup as the solution — fix the root cause in generation.
 
 Check for "model tells" — phrases used too frequently:
 
-> **Domain-specific:** These example phrases are from therapy.
-> For your domain, identify phrases that appear too often in your generated data.
+> **Domain-specific:** Identify phrases that appear too often in your generated data.
+> The examples below are illustrative—build your own list for your domain.
 
 ```python
 SIGNATURE_PHRASES = [
@@ -622,7 +659,7 @@ to_process = [c for c in conversations if c.id not in completed_ids]
 
 ## Cost Estimates
 
-Based on therapy project (Sonnet backend):
+Example costs (Sonnet backend, conversational domain):
 
 | Task | Per-Transcript | Time |
 |------|----------------|------|

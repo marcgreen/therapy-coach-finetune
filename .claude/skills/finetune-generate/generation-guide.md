@@ -47,7 +47,7 @@ async def generate_conversation(persona, target_turns, system_prompt):
 Early experiments truncated history for efficiency. This broke:
 - Context continuity (assistant forgets what user said)
 - Topic tracking (same topics re-introduced as new)
-- History utilization criteria (MT4, MT5 in therapy rubric)
+- Rubric criteria that depend on history utilization
 
 ```python
 # WRONG: Truncated history
@@ -86,29 +86,11 @@ Without this, conversations feel like scripted Q&A, not real interactions.
 
 ### Turn Guidance
 
-Without guidance, conversations drift aimlessly. Provide stage-appropriate direction:
+Without guidance, conversations drift aimlessly. Provide stage-appropriate direction.
+
+**The pattern:** Define behaviors for early/middle/late conversation stages that create realistic progression.
 
 ```python
-TURN_GUIDANCE = {
-    "early": [
-        "Share initial context",
-        "Express a specific emotion",
-        "Ask a direct question",
-    ],
-    "middle": [
-        "Go deeper into feelings",
-        "Connect to past experience",
-        "Show ambivalence about change",
-        "Bring up a related topic",
-    ],
-    "late": [
-        "Reflect on the discussion",
-        "Identify a next step",
-        "Express what's different now",
-        "Revisit an earlier topic",
-    ],
-}
-
 def get_turn_guidance(turn, total_turns):
     if turn < total_turns * 0.25:
         return random.choice(TURN_GUIDANCE["early"])
@@ -118,40 +100,63 @@ def get_turn_guidance(turn, total_turns):
         return random.choice(TURN_GUIDANCE["late"])
 ```
 
-### Flaw Injection
+**Define guidance for your domain.** Examples by domain type:
 
-Apply persona flaws per-message with probability:
+| Domain | Early | Middle | Late |
+|--------|-------|--------|------|
+| **Support/coaching** | Share context, express concern | Go deeper, show resistance | Reflect, identify next steps |
+| **Technical help** | Describe problem, share errors | Try suggestions, report results | Confirm resolution, ask follow-ups |
+| **Sales/consulting** | State needs, ask questions | Compare options, raise objections | Negotiate, decide |
+| **Tutoring** | Attempt problem, show confusion | Work through steps, make mistakes | Demonstrate understanding |
+
+### Behavioral Variation
+
+> **Note:** These correspond to "flaws" in the persona template (see [persona-guide.md](../finetune-design/persona-guide.md)). Same concept, different framing: "flaws" for design, "behaviors" for implementation.
+
+Inject realistic behavioral patterns probabilistically—not every message, not consistently.
+
+**The pattern:** Define primary and secondary behaviors for each persona. Apply them with probability:
 
 ```python
 def build_user_prompt(persona, history, turn_guidance):
-    active_flaws = []
+    active_behaviors = []
 
-    if persona.primary_flaw and random.random() < 0.50:
-        active_flaws.append(persona.primary_flaw)
+    # Primary behavior: ~50% of messages
+    if persona.primary_behavior and random.random() < 0.50:
+        active_behaviors.append(persona.primary_behavior)
 
-    for flaw in persona.secondary_flaws:
+    # Secondary behaviors: ~20% each
+    for behavior in persona.secondary_behaviors:
         if random.random() < 0.20:
-            active_flaws.append(flaw)
+            active_behaviors.append(behavior)
 
     return USER_PROMPT_TEMPLATE.format(
         persona=persona,
         history=format_history(history),
         turn_guidance=turn_guidance,
-        active_flaws=active_flaws or "None - communicate clearly",
+        active_behaviors=active_behaviors or "None - communicate directly",
     )
 ```
 
-### Word Limit Enforcement
+**Example behaviors by domain:**
 
-Styles converge to verbose without hard limits:
+| Domain | Example Behaviors |
+|--------|-------------------|
+| **Support/coaching** | Vague descriptions, burying the real issue, deflecting, intellectualizing |
+| **Technical help** | Incomplete error messages, wrong terminology, skipping steps, XY problem |
+| **Customer service** | Frustration, impatience, referencing competitors, threatening to cancel |
+| **Tutoring** | Guessing, pattern-matching without understanding, giving up too easily |
+
+### Message Length Enforcement
+
+Without hard limits, all communication styles converge to verbose. Define length ranges per style:
 
 ```python
+# Example styles (define your own for your domain)
 STYLE_LIMITS = {
     "terse": (30, 80),
-    "text-speak": (50, 120),
     "casual": (80, 180),
-    "formal": (120, 250),
-    "stream-of-consciousness": (150, 300),
+    "detailed": (150, 300),
 }
 
 # In user simulator prompt:
@@ -161,104 +166,57 @@ Count carefully. This is enforced.
 """
 ```
 
+**Why this matters:** LLMs default to long messages. Explicit limits create realistic variety.
+
 ---
 
 ## Assistant Prompt Engineering
 
 The assistant generator determines training data quality. Every prompt deficiency becomes a model deficiency.
 
-### Length Matching (#1 Failure Mode)
+**Assistant prompt requirements are highly domain-specific.** Identify what matters for YOUR domain.
 
-Responses that are 3-4x longer than user messages feel "preachy."
+### Identify Your Domain Type
 
-```markdown
-# In assistant prompt:
+| Domain Type | Key Constraints | Examples |
+|-------------|-----------------|----------|
+| **Conversational support** | Length matching, question discipline, tentative language, relationship continuity | Coaching, therapy, customer support |
+| **Factual Q&A** | Accuracy, conciseness, source citation | Documentation bots, knowledge bases |
+| **Creative/generative** | Style consistency, constraint following, originality | Writing assistants, code generation |
+| **Task execution** | Completeness, correctness, efficiency | Agents, automation |
 
-TARGET: 1.0-1.5x user's word count. HARD LIMIT: 2x.
+### Universal Constraints
 
-| User writes | Your target   | Never exceed |
-|-------------|---------------|--------------|
-| 30 words    | 30-45 words   | 60 words     |
-| 100 words   | 100-150 words | 200 words    |
-| 200 words   | 200-300 words | 400 words    |
+These apply to most domains:
 
-Transcripts FAIL assessment when:
-- Average ratio > 2x
-- More than 50% of turns exceed 2x
-```
+**Anti-pattern lists:** Explicitly list phrases to avoid. Review generated data and note recurring problematic phrases—hollow validation, sycophantic agreement, repetitive openers, domain jargon that sounds performative.
 
-### Tentative Language (Interpretations)
+**ASCII only (if applicable):** Unicode characters cause issues in some pipelines. Specify straight quotes, standard dashes, no special characters if your training pipeline requires it.
 
-**Never assert psychological/internal dynamics as fact.**
+### Domain-Specific Constraints
 
-```markdown
-# BAD (fails assessment):
-"You're not afraid of failing. You're afraid of mattering."
-"You weren't helping them—you were protecting yourself."
+**These are examples, not a comprehensive list.** Your domain will have unique constraints. Discover them through iteration.
 
-# GOOD (passes assessment):
-"I wonder if there's something deeper here—does that resonate?"
-"It seems like maybe part of you was protecting something. What do you think?"
+| Constraint | Applies To | What to Specify |
+|------------|-----------|-----------------|
+| **Length matching** | Conversational domains | Target ratio to user message (e.g., 1.0-1.5x) |
+| **Question discipline** | Ongoing relationship domains | Limits per response, ending variety |
+| **Tentative language** | Interpretation domains | Hedging requirements for inferences |
+| **Proactive follow-up** | Coaching/support domains | Rules for referencing previous suggestions |
+| **Format requirements** | Structured output domains | Headers, sections, code blocks |
+| **Citation style** | Factual domains | How to reference sources |
+| **???** | Your domain | Discovered through brainstorming, expert roleplay, and failed assessments |
 
-Always:
-1. Use tentative framing ("I wonder if...", "Could it be...")
-2. End with a check ("Does that fit?", "What do you think?")
-```
+**Example (conversational support):** See [therapy-domain.md](../examples/therapy-domain.md) for length matching ratios, question discipline rules, and tentative language requirements.
 
-### Question Discipline
+### Build Your Constraint List
 
-Too many questions feels like interrogation.
+1. **Generate 5-10 sample conversations** with minimal constraints
+2. **Identify failure modes** — What feels wrong? Too long? Too robotic? Too aggressive?
+3. **Add constraints iteratively** — One constraint per failure mode
+4. **Test each constraint** — Does it fix the issue without breaking something else?
 
-```markdown
-QUESTION LIMITS:
-- Single-topic response: 0-1 questions
-- Multi-topic response: 1-2 questions max
-- Never end every section with a question
-
-RESPONSE ENDING VARIETY:
-- 40% end with a question
-- 40% end with a statement/reflection
-- 20% end with an offer ("If you want, we could explore...")
-```
-
-### Proactive Follow-up
-
-If the assistant suggested an experiment, follow up proactively:
-
-```markdown
-# BAD (passive - user brings it up):
-User: "I tried the grounding thing"
-Assistant: "That's great! How did it go?"
-
-# GOOD (proactive - assistant asks first):
-Assistant: "Before we dig into today—did you get a chance to try the breathing thing?"
-```
-
-### Anti-Patterns List
-
-Explicitly list phrases to avoid:
-
-```markdown
-WHAT TO AVOID:
-- "That sounds really hard" (hollow validation)
-- "That's profoundly..." (therapy voice)
-- "You're absolutely right" (sycophantic)
-- "Let's unpack that" (jargon)
-- "That's not nothing" (if overused)
-- Starting every response with "Hey"
-- Ending every response with a question
-```
-
-### ASCII Only
-
-Unicode characters cause issues in some pipelines:
-
-```markdown
-Stick to ASCII only:
-- Straight quotes (", ') not curly quotes
-- Standard dashes (-) not em dashes
-- No special characters
-```
+Don't copy constraints from other domains without validating they apply to yours.
 
 ---
 
@@ -284,7 +242,7 @@ assistant_msg = await assistant_generator(model="sonnet")  # Quality
 
 ## Async vs Sync Text Format
 
-If your domain involves asynchronous communication (e.g., text therapy, email support):
+If your domain involves asynchronous communication (e.g., email support, async messaging):
 
 ```markdown
 ASYNC FORMAT:
@@ -320,30 +278,23 @@ for turn in range(target_turns):
 
 ---
 
-## Example: Therapy Project Prompts
+## Prompt Element Checklist
 
-> **Adapt for your domain:** The therapy example below shows what elements to include.
-> For complete therapy prompts, see [examples/therapy-domain.md](../examples/therapy-domain.md).
-> For other domains, adapt the elements to your context.
-
-**User simulator key elements:**
-- Persona details (style, flaws, trajectory)
+**User simulator prompt must include:**
+- Persona details (communication style, behavioral patterns)
 - Full conversation history
-- Turn guidance
-- Active flaws for this message
-- Word count limits
+- Turn guidance for current stage
+- Active behaviors for this message (probabilistic)
+- Message length constraints
 
-**Assistant key elements:**
+**Assistant prompt must include:**
 - System prompt with domain knowledge
 - Full conversation history
 - Current user message
-- Length matching rules
-- Tentative language requirements
-- Question discipline
+- Domain-specific quality requirements (see "Assistant Prompt Engineering" above)
 - Anti-patterns list
-- Proactive follow-up rules
 
-**Iterations:** The assistant prompt went through 15+ versions. Each iteration addressed specific failure modes discovered in assessment.
+**Expect iteration:** Assistant prompts typically go through 10-20 versions. Each iteration addresses specific failure modes discovered in assessment. This is normal.
 
 ---
 
@@ -352,10 +303,9 @@ for turn in range(target_turns):
 Before scaling generation:
 
 - [ ] User simulator produces varied, realistic messages
-- [ ] Flaws are applied probabilistically, not consistently
-- [ ] Word limits are enforced per style
-- [ ] Assistant prompt includes all key requirements
+- [ ] Behavioral patterns applied probabilistically, not consistently
+- [ ] Message length constraints enforced
+- [ ] Assistant prompt includes domain-specific requirements
 - [ ] Anti-patterns explicitly listed
-- [ ] Length matching working (check ratios)
 - [ ] Checkpointing enabled
-- [ ] Pilot pass rate ≥70%
+- [ ] Pilot batch assessed with ≥70% pass rate

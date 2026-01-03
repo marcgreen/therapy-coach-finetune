@@ -235,6 +235,7 @@ Before finalizing your taxonomy:
 - [ ] Multiple difficulty levels included
 - [ ] Distribution feels realistic (not too many extremes)
 - [ ] Pilot generation shows good variety
+- [ ] Expert role-play critique applied (see [assessment-guide.md#expert-role-play-critique](../finetune-generate/assessment-guide.md#expert-role-play-critique))
 
 ---
 
