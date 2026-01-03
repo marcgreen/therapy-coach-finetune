@@ -120,7 +120,9 @@ Design quality criteria for assessing generated conversations.
 - Binary judgments (YES/NO/NA) — not numeric scales
 - Grouped into weighted categories
 - Safety gates that auto-reject on failure
-- 3-8 calibration examples per criterion
+- 3-8 calibration examples per criterion (essential for multi-backend consistency)
+
+**Why calibration examples are non-negotiable:** During generation, you'll run assessment with multiple LLM backends (Claude, GPT, Gemini) to catch blind spots. Without calibration examples, backends interpret criteria differently — 20-30% disagreement is common. Calibration examples anchor consistent interpretation.
 
 **Structure:**
 ```yaml
@@ -162,8 +164,7 @@ Design user diversity for realistic training data.
 **Dimensions to define:**
 - Communication style (terse, verbose, emotional, analytical)
 - Behavior patterns / "flaws" (resistance, deflection, etc.)
-- Trajectory (stable, improving, deteriorating)
-- Domain-specific attributes
+- Domain-specific attributes (varies by domain)
 
 **Key lesson:** Flaws vary per message, not per conversation. Real people have good days and bad days.
 
@@ -232,6 +233,10 @@ Before committing to fine-tune, evaluate the base model on your rubric.
 
 **Gate:** Base model evaluated, decision to proceed documented in `base-model-eval-results.md`
 
+### A Note on Numbers
+
+All numeric parameters in these guides (15% edge cases, 50%/20% flaw probabilities, 0.80 pass threshold, etc.) are **starting points from one successful project**, not universal truths. Calibrate them for your domain based on pilot generation results and human review.
+
 ### Red Flags: Rationalizations to Resist
 
 | Rationalization | Reality |
@@ -239,7 +244,7 @@ Before committing to fine-tune, evaluate the base model on your rubric.
 | "Base model is obviously not good enough" | Evaluate anyway. You need baseline numbers for comparison. |
 | "I'll use numeric scales (1-5), it's fine" | Numeric scales drift across assessors. Binary judgments are consistent. |
 | "Calibration examples are overkill" | Without examples, backends interpret criteria differently. 20-30% disagreement. |
-| "Edge cases are rare, skip them" | Without 15% edge case representation, model fails at boundaries. |
+| "Edge cases are rare, skip them" | Without ~15% edge case representation, model fails at boundaries. |
 | "I know what users want, skip taxonomy" | Your intuition is biased. Formal taxonomy ensures coverage. |
 | "Expert role-play takes too long" | 1 hour of critique catches blind spots that corrupt 100+ transcripts. Do it. |
 

@@ -134,6 +134,27 @@ flaw_application:
   no_flaw_personas: 0.20           # 20% of personas have no flaws
 ```
 
+### Trajectory (Therapy-Specific)
+
+For therapy/coaching domains, the user's *situation* can evolve over the conversation:
+
+| Trajectory | Description | Effect |
+|------------|-------------|--------|
+| Stable | Situation remains similar | Consistent themes |
+| Improving | Things get better | Insights build, breakthroughs |
+| Deteriorating | Things get worse | New problems, compounding |
+| Volatile | Swings between better/worse | Unpredictable, mood-dependent |
+
+```yaml
+trajectory:
+  options: [stable, improving, deteriorating, volatile]
+  weights: [0.30, 0.30, 0.25, 0.15]
+```
+
+**Key lesson:** Trajectory affects the situation, not communication style. A "deteriorating" trajectory means life gets harder — not that the user becomes more difficult to talk to.
+
+> **Note:** Trajectory is therapy-specific. Other domains may not need this dimension, or may need different trajectory types (e.g., technical support: problem_resolved, problem_worsening, new_issue_discovered).
+
 ---
 
 ## Evaluation Rubric

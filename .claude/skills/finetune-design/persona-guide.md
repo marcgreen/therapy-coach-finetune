@@ -28,7 +28,6 @@ Personas should vary across multiple dimensions that affect conversation dynamic
 |-----------|------------------|
 | Communication style | How they express themselves |
 | Behavior patterns | How they engage with help |
-| Trajectory | How the situation evolves |
 | Domain-specific | Context relevant to your domain |
 
 ---
@@ -52,11 +51,8 @@ persona_template:
     primary: str | null      # 50% chance per message
     secondary: list[str]     # 20% chance each per message
 
-  # Situation evolution
-  trajectory: Literal["stable", "improving", "deteriorating", "volatile"]
-
-  # Domain-specific
-  topic_seeds: list[dict]    # Starting topics with complexity
+  # Domain-specific attributes
+  # Add dimensions relevant to your domain
   # ... other domain attributes
 ```
 
@@ -140,28 +136,15 @@ flaw_application:
     - Some messages: Multiple flaws stacking (rough day)
 ```
 
+> **Note:** 50% and 20% are starting points that worked in one project. Calibrate for your domain. Technical support might want lower flaw rates; coaching might want higher.
+
 **Implementation:** See template section below for the `apply_flaws` function.
-
----
-
-## Trajectory
-
-How the user's situation evolves over the conversation:
-
-| Trajectory | Description | Effect |
-|------------|-------------|--------|
-| Stable | Situation remains similar | Consistent themes |
-| Improving | Things get better | Insights build, breakthroughs |
-| Deteriorating | Things get worse | New problems, compounding |
-| Volatile | Swings between better/worse | Unpredictable, mood-dependent |
-
-**Key lesson:** Trajectory affects the situation, not communication style. A "deteriorating" trajectory means life gets harder — not that the user becomes more difficult to talk to.
 
 ---
 
 ## Flaw-Free Personas
 
-**20% of personas should have NO flaw patterns.**
+**~20% of personas should have NO flaw patterns.**
 
 Not everyone is difficult. Some users are:
 - Clear communicators who know what they want
@@ -169,6 +152,8 @@ Not everyone is difficult. Some users are:
 - Self-aware and articulate
 
 Initial distribution was 50% no-flaw — too high, felt unrealistic. 20% provides good balance.
+
+> **Note:** 20% is a starting point that worked in one project. Calibrate based on your domain's actual user distribution.
 
 ---
 
@@ -198,10 +183,6 @@ persona_template:
       options: [deflecting, contradicting, reassurance_seeking, testing]
       max_secondary: 2
 
-  trajectory:
-    options: [stable, improving, deteriorating, volatile]
-    weights: [0.30, 0.30, 0.25, 0.15]
-
   topic_seeds:
     count: 4-6
     complexity_range: [0.3, 0.9]  # Low to high complexity
@@ -216,7 +197,6 @@ attachment_style: "avoidant"
 communication_style: "casual"
 primary_flaw: "intellectualizing"
 secondary_flaws: ["deflecting"]
-trajectory: "improving"
 topic_seeds:
   - topic: "work_stress"
     complexity: 0.6
@@ -236,9 +216,8 @@ Before finalizing your persona template:
 - [ ] Behavior patterns (flaws) catalogued for your domain
 - [ ] Flaw application is per-message, not per-conversation
 - [ ] ~20% of personas have no flaw patterns
-- [ ] Trajectory options defined
 - [ ] Distribution weights set
-- [ ] Domain-specific attributes included
+- [ ] Domain-specific attributes defined
 - [ ] Expert role-play critique applied (see [assessment-guide.md#expert-role-play-critique](../finetune-generate/assessment-guide.md#expert-role-play-critique))
 
 ---
@@ -251,7 +230,6 @@ Before finalizing your persona template:
 | Consistent flaws | Unrealistic, model learns narrow pattern | Per-message probability |
 | All users difficult | Unrealistic, skewed training | 20% no-flaw personas |
 | No word limits | Styles converge to verbose | Hard limits per style |
-| Static trajectory | Conversation feels flat | Situation evolves over time |
 
 ---
 
@@ -283,11 +261,10 @@ persona_template:
     primary: str | null           # 50% chance per message
     secondary: list[str]          # 20% chance each per message
 
-  # Situation evolution
-  trajectory: Literal["stable", "improving", "deteriorating", "volatile"]
-
   # Domain-specific attributes
-  # ... add your domain's relevant attributes
+  # Add dimensions relevant to your domain
+  # e.g., for therapy: trajectory, attachment_style
+  # e.g., for support: account_tier, tenure
 ```
 
 ### Multi-Domain Flaw Examples

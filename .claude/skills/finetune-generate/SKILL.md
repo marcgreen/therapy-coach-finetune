@@ -52,9 +52,9 @@ By the end of this phase, you will have:
 - See patterns without wasting compute
 - Iterate while context is fresh
 
-### Why Human-in-the-Loop?
+### Why Human-in-the-Loop? (Non-Negotiable)
 
-The human reviews BOTH transcripts AND assessment results:
+**Human review is required, not optional.** The human reviews BOTH transcripts AND assessment results:
 
 | Human reviews... | Looking for... |
 |------------------|----------------|

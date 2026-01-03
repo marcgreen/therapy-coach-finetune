@@ -129,10 +129,12 @@ na_invalid_criteria: [CQ1, CQ8, CP2, MT1, MT6]
 
 **This is the most important part of the rubric.**
 
+During generation, you'll run assessment with **multiple LLM backends** (Claude, GPT, Gemini) to catch blind spots. This is non-negotiable — single-backend assessment misses 20-30% of issues.
+
 Without calibration examples:
-- Different LLM backends interpret criteria differently
+- Different backends interpret criteria differently
 - Claude might pass what GPT-5 fails
-- 20-30% of your "passing" data may have subtle issues
+- You optimize against one assessor's biases, not actual quality
 
 ### How Many Examples?
 
@@ -228,6 +230,8 @@ def passes(answers, score):
     else:
         return False, "below_threshold"
 ```
+
+> **Note:** 0.80 is a starting point that worked in one project. Calibrate for your domain — safety-critical domains might need higher thresholds, simple Q&A might tolerate lower.
 
 ---
 

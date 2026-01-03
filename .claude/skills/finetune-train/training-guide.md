@@ -400,7 +400,7 @@ python -m mlx_lm.lora \
 1. **mask_prompt=true is essential** — Only compute loss on assistant turns
 2. **8-bit base model works** — Uses less memory
 3. **Adapter format differs** — Need to convert for GGUF export
-4. **Slower but free** — ~4-6 hours for 1K examples on M3 Max
+4. **Slower but free** — No cloud GPU cost, but patience required
 
 ---
 
@@ -551,11 +551,13 @@ uv run python scripts/convert_to_gguf.py \
 
 ### Protocol
 
-1. **Generate NEW personas** (10-15, not used in training)
+1. **Generate NEW personas** (10-15) using seeds NOT in training data
+   - Training typically uses seeds 0-4999; evaluation uses 9000+
+   - This tests generalization, not memorization of training distribution
 2. **For each persona:** Generate 3 conversations with EACH model
-3. **Same user simulator** for all (controlled comparison)
-4. **Assess all conversations** with your rubric
-5. **Statistical comparison** (paired t-test)
+3. **Same user simulator** for all (controlled pairwise comparison)
+4. **Assess all conversations** with your rubric (same criteria, same assessor)
+5. **Statistical comparison** (paired t-test on same-persona pairs)
 
 ### Multi-Model Comparison Workflow
 
@@ -709,15 +711,4 @@ HF Jobs can timeout after training completes but before final push. To verify:
    hf download username/model-adapter --local-dir ./adapter
    ```
 
----
-
-## Cost Estimates
-
-| Hardware | Cost/hr | 1K examples (3 epochs) |
-|----------|---------|------------------------|
-| A10G | ~$1.50 | ~$4-5 (2-3 hours) |
-| A100 | ~$4.00 | ~$12-16 (3-4 hours) |
-
 **Note:** A100 required for Gemma 3 with 8k+ context, or any model with 16k+ context.
-
-Scale linearly with dataset size and epochs.

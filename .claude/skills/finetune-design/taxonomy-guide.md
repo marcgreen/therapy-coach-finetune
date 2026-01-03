@@ -147,10 +147,12 @@ edge_cases:
     - hostile             # Aggressive, testing limits
 ```
 
-**Why 15%?**
+**Why ~15%?**
 - Too low (5%): Model won't learn to handle edges
 - Too high (30%): Model becomes paranoid about normal requests
 - 15% provides exposure without skewing the distribution
+
+> **Note:** 15% is a starting point that worked in one project. Calibrate for your domain — some domains may need more edge case coverage (safety-critical) or less (simple Q&A).
 
 ---
 

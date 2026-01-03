@@ -100,18 +100,7 @@ At 500 tokens/exchange: ~28 exchanges max
 With safety margin: ~20-25 exchanges recommended
 ```
 
-### Cost Estimation
-
-For HuggingFace Jobs (A10G):
-
-| Examples | Avg Tokens | Training Time | Cost |
-|----------|------------|---------------|------|
-| 500 | 8K | ~1.5 hours | ~$2-3 |
-| 1000 | 8K | ~3 hours | ~$4-5 |
-| 1000 | 16K | ~5 hours | ~$7-8 |
-| 2000 | 16K | ~10 hours | ~$15 |
-
-**Lesson:** Decide token budget early. It affects conversation design, not just training cost.
+**Lesson:** Decide token budget early. It affects conversation design and training requirements.
 
 ---
 
@@ -160,7 +149,6 @@ Before finalizing model choice:
 - [ ] Speed acceptable for your use case
 - [ ] Training memory fits your GPU (check vocab size!)
 - [ ] Token budget defined (recommend ≤16K/example)
-- [ ] Cost estimate acceptable
 
 ---
 
@@ -170,5 +158,5 @@ Before finalizing model choice:
 |--------------|--------------|-----------------|
 | Choosing by benchmark scores | Benchmarks don't reflect your task | Evaluate on YOUR rubric |
 | Ignoring vocab size | Hidden OOM issues | Check vocab, test memory |
-| Maximizing context window | Diminishing returns, higher cost | Match to actual need |
+| Maximizing context window | Diminishing returns, more memory | Match to actual need |
 | Skipping base evaluation | Don't know if fine-tuning helps | Always evaluate first |

@@ -86,13 +86,15 @@ Format and upload your training data:
 
 ### Step 2: Choose Training Approach
 
-| Approach | Best For | Cost |
-|----------|----------|------|
-| **HuggingFace Jobs** | Fast, serverless GPU | ~$5-15 for 1K examples |
-| **MLX Local** | Apple Silicon, free | 4-6 hours on M3 Max |
-| **Cloud GPU** | Full control, large jobs | Varies |
+| Approach | Best For |
+|----------|----------|
+| **HuggingFace Jobs** | Fast iteration, serverless GPU, minimal setup |
+| **MLX Local** | Apple Silicon, no cloud dependency |
+| **Cloud GPU** | Full control, large jobs |
 
-**HuggingFace Jobs** is recommended for most projects — fast iteration, minimal setup.
+**HuggingFace Jobs** is recommended for most projects.
+
+Also consider Thinking Machines.
 
 **Reference:** [training-guide.md](training-guide.md)
 
@@ -274,12 +276,18 @@ llama-server -m ./models/qwen3-finetuned/model-q4_k_m.gguf --port 8080 -ngl 99
 
 ### Step 7: Evaluation
 
-Compare fine-tuned model(s) against base model using full-conversation generation.
+Compare fine-tuned model against base model using pairwise full-conversation assessment.
 
-**Why full-conversation evaluation:**
-- Tests the actual use case (multi-turn, not single-turn)
-- Captures consistency, context use, relationship building
-- More rigorous than perplexity on held-out set
+**Evaluation methodology:**
+1. Generate NEW personas using seeds not in training data (e.g., seeds 9000+)
+2. Run BOTH models on the same personas with the same user simulator
+3. Assess all conversations with your rubric (same assessor, same criteria)
+4. Compare scores pairwise using statistical test (paired t-test)
+
+**Why this methodology:**
+- **New seeds:** Prevents evaluation on training distribution — tests generalization
+- **Pairwise comparison:** Same persona + same user simulator = controlled comparison
+- **Full conversations:** Tests multi-turn dynamics, not just single-turn quality
 
 **Multi-Model Comparison Workflow:**
 

@@ -94,7 +94,7 @@ When backends disagree (spread > 0.15):
 | Gemini | Catches structural issues | Sometimes inconsistent |
 | GPT-5 | Good at clinical labels, safety | Expensive |
 
-**Recommendation:** Use at least two backends. Take the stricter result.
+**Multi-backend assessment is required, not optional.** Single-backend assessment misses 20-30% of issues. Use at least two backends and take the stricter result. In one project, single-backend gave transcript 1000 a perfect 1.0; other backends caught 4 failures.
 
 ---
 
@@ -654,21 +654,6 @@ completed_ids = load_checkpoint(checkpoint_path)
 to_process = [c for c in conversations if c.id not in completed_ids]
 # Process only remaining conversations
 ```
-
----
-
-## Cost Estimates
-
-Example costs (Sonnet backend, conversational domain):
-
-| Task | Per-Transcript | Time |
-|------|----------------|------|
-| Generation (25-turn) | ~$0.10-0.15 | 2-3 min |
-| Assessment (17 criteria) | ~$0.05-0.08 | 1-2 min |
-| Multi-backend assessment | ~$0.15-0.20 | 3-5 min |
-| Fixup (if needed) | ~$0.03-0.05 | 30 sec |
-
-**Use Claude Code CLI for zero marginal cost** if you have unlimited usage.
 
 ---
 

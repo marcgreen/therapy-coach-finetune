@@ -139,6 +139,8 @@ def build_user_prompt(persona, history, turn_guidance):
     )
 ```
 
+> **Note:** 50% and 20% are starting points that worked in one project. See [persona-guide.md](../finetune-design/persona-guide.md) for calibration guidance.
+
 **Example behaviors by domain.** These are examples, not a comprehensive list. Discover what matters for your domain through brainstorming, expert roleplay, and iteration.
 
 | Domain | Example Behaviors |
