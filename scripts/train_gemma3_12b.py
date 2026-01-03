@@ -23,17 +23,17 @@ from datetime import datetime
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
-import trackio
+import trackio  # ty: ignore[unresolved-import]
 import torch
 from datasets import load_dataset
 from peft import LoraConfig
-from trl import SFTTrainer, SFTConfig
+from trl import SFTTrainer, SFTConfig  # ty: ignore[unresolved-import]
 
 # Config
 MODEL_ID = "google/gemma-3-12b-it"
 DATASET_ID = "marcgreen/therapeutic-coaching-v1"
 OUTPUT_REPO = "marcgreen/therapeutic-gemma3-12b"
-MAX_LENGTH = 16384  # A100 can handle this with Gemma 3
+MAX_LENGTH = 4096  # Reduced for faster training
 
 # Unique run name with timestamp to avoid collisions
 RUN_NAME = f"gemma3-12b-{datetime.now().strftime('%Y%m%d-%H%M')}"
@@ -57,7 +57,7 @@ trackio.init(
 # Load dataset
 print("Loading dataset...")
 dataset = load_dataset(DATASET_ID, split="train")
-print(f"Loaded {len(dataset)} training examples")
+print(f"Loaded {len(dataset)} training examples")  # ty: ignore[invalid-argument-type]
 
 # QLoRA config
 peft_config = LoraConfig(

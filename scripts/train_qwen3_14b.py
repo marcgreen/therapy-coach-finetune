@@ -22,11 +22,11 @@ from datetime import datetime
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
-import trackio
+import trackio  # ty: ignore[unresolved-import]
 import torch
 from datasets import load_dataset
 from peft import LoraConfig
-from trl import SFTTrainer, SFTConfig
+from trl import SFTTrainer, SFTConfig  # ty: ignore[unresolved-import]
 
 # Config
 MODEL_ID = "Qwen/Qwen3-14B"
@@ -56,7 +56,7 @@ trackio.init(
 # Load dataset
 print("Loading dataset...")
 dataset = load_dataset(DATASET_ID, split="train")
-print(f"Loaded {len(dataset)} training examples")
+print(f"Loaded {len(dataset)} training examples")  # ty: ignore[invalid-argument-type]
 
 # QLoRA config
 peft_config = LoraConfig(

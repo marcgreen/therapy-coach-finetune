@@ -35,6 +35,7 @@ By the end of this phase, you will have:
 
 - [ ] Fine-tuned model (adapter on HuggingFace Hub)
 - [ ] Merged GGUF file for local deployment
+- [ ] GGUF uploaded to HuggingFace Hub (for others to download)
 - [ ] `evaluation_report.md` — Statistical comparison of base vs fine-tuned
 
 ---
@@ -216,26 +217,39 @@ hf jobs inspect <job_id>      # Job details
 
 ---
 
-### Step 6: GGUF Conversion
+### Step 6: GGUF Conversion & Upload
 
-Convert the fine-tuned adapter to GGUF for local inference:
+Convert the fine-tuned adapter to GGUF and optionally upload to Hub:
 
-1. **Download adapter** from HuggingFace Hub
-2. **Merge with base model:**
-   ```python
-   from peft import PeftModel
-   model = PeftModel.from_pretrained(base_model, adapter_path)
-   merged = model.merge_and_unload()
-   merged.save_pretrained("./merged")
-   ```
-3. **Convert to GGUF** using llama.cpp:
-   ```bash
-   python convert_hf_to_gguf.py ./merged --outtype q4_k_m
-   ```
-4. **Download and test locally:**
-   ```bash
-   llama-server -m model-q4_k_m.gguf --port 8080 -ngl 99
-   ```
+**Automated Script (Recommended):**
+```bash
+# Prerequisites: clone llama.cpp once
+git clone https://github.com/ggerganov/llama.cpp ~/llama.cpp
+
+# Convert adapter to GGUF
+uv run python scripts/convert_to_gguf.py \
+    --adapter-repo username/therapeutic-gemma3-12b \
+    --base-model google/gemma-3-12b-it \
+    --output-dir ./models/gemma3-therapeutic
+
+# Convert AND upload to HuggingFace Hub
+uv run python scripts/convert_to_gguf.py \
+    --adapter-repo username/therapeutic-gemma3-12b \
+    --base-model google/gemma-3-12b-it \
+    --output-dir ./models/gemma3-therapeutic \
+    --upload
+```
+
+**Script options:**
+- `--quant-type`: Quantization type (`q4_k_m`, `q5_k_m`, `q8_0`, etc.)
+- `--upload`: Upload GGUF to HuggingFace Hub after conversion
+- `--gguf-repo`: Custom repo name for upload (default: adapter-repo + `-gguf`)
+- `--cpu`: Use CPU for merging (slower but less VRAM)
+
+**Test locally:**
+```bash
+llama-server -m ./models/gemma3-therapeutic/model-q4_k_m.gguf --port 8080 -ngl 99
+```
 
 **Reference:** [training-guide.md#gguf-conversion](training-guide.md#gguf-conversion)
 
@@ -243,33 +257,57 @@ Convert the fine-tuned adapter to GGUF for local inference:
 
 ### Step 7: Evaluation
 
-Compare fine-tuned model against base model using full-conversation generation.
+Compare fine-tuned model(s) against base model using full-conversation generation.
 
 **Why full-conversation evaluation:**
 - Tests the actual use case (multi-turn, not single-turn)
 - Captures consistency, context use, relationship building
 - More rigorous than perplexity on held-out set
 
-**Protocol:**
-1. Generate 10-15 NEW personas (not used in training)
-2. For each persona, generate 3 conversations with BOTH models
-3. Use the SAME user simulator for both (controlled comparison)
-4. Assess all conversations with your rubric
-5. Compare scores statistically
+**Multi-Model Comparison Workflow:**
+
+```bash
+# Step 1: Generate evaluation personas (uses seeds 9000+, not in training)
+uv run python scripts/generate_eval_personas.py --count 15
+# Output: data/eval/personas.json
+
+# Step 2: Start model servers on different ports
+# Terminal 1: Baseline
+llama-server -m gemma-3-12b-it.gguf --port 8080 -ngl 99
+# Terminal 2: Fine-tuned Gemma
+llama-server -m therapeutic-gemma.gguf --port 8081 -ngl 99
+# Terminal 3: Fine-tuned Qwen (if comparing multiple)
+llama-server -m therapeutic-qwen.gguf --port 8082 -ngl 99
+
+# Step 3: Run evaluation
+uv run python scripts/run_model_evaluation.py \
+    --personas data/eval/personas.json \
+    --output-dir data/eval/results
+
+# Step 4: Review report at data/eval/results/evaluation_report.md
+```
+
+**Evaluation scripts:**
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/generate_eval_personas.py` | Generate NEW personas for evaluation |
+| `scripts/run_model_evaluation.py` | Run multi-model comparison with statistical tests |
+| `scripts/convert_to_gguf.py` | Convert adapters and optionally upload |
+
+**Success criteria:**
+- **Improvement:** ≥10% absolute improvement over baseline
+- **Significance:** p < 0.05 (paired t-test)
+- **Safety:** No regressions on safety criteria
 
 **Statistical comparison:**
 ```python
 from scipy import stats
+import numpy as np
 
-base_scores = [...]
-finetuned_scores = [...]
-
+# Paired t-test (same personas, same user simulator)
 t_stat, p_value = stats.ttest_rel(finetuned_scores, base_scores)
 improvement = np.mean(finetuned_scores) - np.mean(base_scores)
-
-# Success criteria:
-# - improvement >= 0.10 (10% absolute improvement)
-# - p_value < 0.05 (statistically significant)
 ```
 
 **Reference:** [training-guide.md#evaluation](training-guide.md#evaluation)
@@ -336,6 +374,7 @@ Different model families use different naming conventions for instruction-tuned 
 
 - [ ] Training completed successfully
 - [ ] GGUF converted and tested locally
+- [ ] GGUF uploaded to HuggingFace Hub
 - [ ] Evaluation shows significant improvement (≥10%, p<0.05)
 - [ ] No safety regressions
 - [ ] `evaluation_report.md` documents results

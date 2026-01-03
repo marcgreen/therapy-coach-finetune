@@ -177,6 +177,7 @@ class LLMBackend(ABC):
         prompt: str,
         system: str | None = None,
         max_tokens: int = 4096,
+        history: list[dict[str, str]] | None = None,
     ) -> CompletionResult:
         """Generate a text completion.
 
@@ -184,6 +185,7 @@ class LLMBackend(ABC):
             prompt: The user prompt
             system: Optional system prompt
             max_tokens: Maximum tokens to generate
+            history: Optional conversation history (list of {"role": ..., "content": ...})
 
         Returns:
             CompletionResult with the generated text
@@ -254,6 +256,7 @@ class OpenAIBackend(LLMBackend):
         prompt: str,
         system: str | None = None,
         max_tokens: int = 4096,
+        history: list[dict[str, str]] | None = None,  # noqa: ARG002 - Not used yet
     ) -> CompletionResult:
         """Generate completion using OpenAI Responses API."""
         from openai.types.responses import EasyInputMessageParam
@@ -365,6 +368,7 @@ class GoogleBackend(LLMBackend):
         prompt: str,
         system: str | None = None,
         max_tokens: int = 4096,
+        history: list[dict[str, str]] | None = None,  # noqa: ARG002 - Not used yet
     ) -> CompletionResult:
         """Generate completion using Google Gemini API."""
         from google.genai import types
@@ -515,6 +519,7 @@ class ClaudeCLIBackend(LLMBackend):
         prompt: str,
         system: str | None = None,
         max_tokens: int = 4096,  # noqa: ARG002 - CLI doesn't support this
+        history: list[dict[str, str]] | None = None,  # noqa: ARG002 - Not used yet
     ) -> CompletionResult:
         """Generate completion using Claude CLI."""
         cmd = [
@@ -709,3 +714,134 @@ def get_default_backend() -> LLMBackend:
     if _default_backend is None:
         _default_backend = OpenAIBackend()
     return _default_backend
+
+
+class LocalLLMBackend(LLMBackend):
+    """Backend for local LLM servers (llama.cpp, Ollama, etc.) via OpenAI-compatible API.
+
+    Used for evaluating local fine-tuned models running on llama-server or similar.
+
+    Example:
+        # Start llama-server
+        llama-server -m model.gguf --port 8080 -ngl 99
+
+        # Use backend
+        backend = LocalLLMBackend(endpoint="http://localhost:8080")
+        response = await backend.complete("Hello!")
+    """
+
+    def __init__(
+        self,
+        endpoint: str = "http://localhost:8080",
+        timeout: int = 300,  # 5 minutes for long generations
+    ):
+        """Initialize local LLM backend.
+
+        Args:
+            endpoint: Base URL for the local server (e.g., "http://localhost:8080")
+            timeout: Timeout in seconds for API calls
+        """
+        import httpx
+
+        self._endpoint = endpoint.rstrip("/")
+        self._timeout = timeout
+        self._client = httpx.AsyncClient(timeout=timeout)
+
+    @property
+    def name(self) -> str:
+        return f"Local ({self._endpoint})"
+
+    async def complete(
+        self,
+        prompt: str,
+        system: str | None = None,
+        max_tokens: int = 4096,
+        history: list[dict[str, str]] | None = None,
+    ) -> CompletionResult:
+        """Generate completion using local server's OpenAI-compatible API."""
+        # Build messages array
+        messages: list[dict[str, str]] = []
+
+        if system:
+            messages.append({"role": "system", "content": system})
+
+        # Add history if provided
+        if history:
+            messages.extend(history)
+
+        # Add current prompt
+        messages.append({"role": "user", "content": prompt})
+
+        # Call OpenAI-compatible endpoint
+        response = await self._client.post(
+            f"{self._endpoint}/v1/chat/completions",
+            json={
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": 0.7,
+            },
+        )
+
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Local LLM error ({response.status_code}): {response.text}"
+            )
+
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+
+        return CompletionResult(
+            content=content,
+            model="local",
+            usage=data.get("usage"),
+        )
+
+    async def complete_structured(
+        self,
+        prompt: str,
+        response_model: type[T],
+        system: str | None = None,
+        max_tokens: int = 4096,
+    ) -> T:
+        """Generate structured completion by prompting for JSON.
+
+        Note: Local models may not reliably produce valid JSON.
+        Consider using complete() with manual parsing for robustness.
+        """
+        # Augment prompt to request JSON
+        schema = response_model.model_json_schema()
+        json_prompt = f"""{prompt}
+
+Respond with ONLY valid JSON matching this schema:
+{json.dumps(schema, indent=2)}
+
+JSON response:"""
+
+        result = await self.complete(json_prompt, system=system, max_tokens=max_tokens)
+
+        # Parse JSON from response
+        try:
+            # Try to extract JSON from response (handle markdown code blocks)
+            content = result.content.strip()
+            if content.startswith("```"):
+                # Extract from code block
+                lines = content.split("\n")
+                json_lines = []
+                in_block = False
+                for line in lines:
+                    if line.startswith("```") and not in_block:
+                        in_block = True
+                        continue
+                    elif line.startswith("```") and in_block:
+                        break
+                    elif in_block:
+                        json_lines.append(line)
+                content = "\n".join(json_lines)
+
+            data = json.loads(content)
+            return response_model.model_validate(data)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise ValueError(
+                f"Failed to parse local LLM response as {response_model.__name__}: {e}\n"
+                f"Response: {result.content[:500]}"
+            )

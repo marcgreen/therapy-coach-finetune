@@ -408,49 +408,133 @@ python -m mlx_lm.lora \
 
 Convert fine-tuned adapter to GGUF for local inference.
 
-### Step 1: Download Adapter
+### Memory Requirements
 
-```python
-from huggingface_hub import snapshot_download
-adapter_path = snapshot_download("username/therapeutic-model")
+**Critical:** Merging requires loading the full model in memory.
+
+| Model | float32 (CPU default) | bfloat16 (recommended) |
+|-------|----------------------|------------------------|
+| Qwen3 14B | ~56GB RAM | ~28GB RAM |
+| Gemma 3 12B | ~48GB RAM | ~24GB RAM |
+| Llama 3 8B | ~32GB RAM | ~16GB RAM |
+
+**Always use bfloat16** to reduce memory by half. The scripts below default to bfloat16.
+
+### Known Issues
+
+**Issue: Homebrew llama.cpp version mismatch**
+
+Homebrew's `llama.cpp` has a version mismatch with the `gguf` Python package:
+```
+ImportError: cannot import name 'MistralTokenizerType' from 'gguf.vocab'
 ```
 
-### Step 2: Merge Adapter
+**Solution:** Clone fresh from GitHub instead of using Homebrew:
+```bash
+git clone https://github.com/ggerganov/llama.cpp ~/llama.cpp
+pip install -r ~/llama.cpp/requirements.txt
+```
 
+The Homebrew `llama-quantize` binary still works fine for quantization.
+
+### Manual Process (Recommended)
+
+The manual process gives you more control and works reliably on macOS.
+
+**Step 1: Download Base Model (Resumable)**
+```bash
+# Use hf download for resumable downloads (important for 28GB models)
+hf download Qwen/Qwen3-14B --local-dir ~/models/qwen3-14b-base
+
+# Or for Gemma
+hf download google/gemma-3-12b-it --local-dir ~/models/gemma3-12b-base
+```
+
+**Step 2: Download Adapter**
+```bash
+# Download adapter from HuggingFace
+hf download username/therapeutic-qwen3-14b --local-dir ./models/qwen3-therapeutic/adapter
+```
+
+**Step 3: Merge Adapter (bfloat16)**
+
+Use `scripts/merge_lora_adapter.py`:
+```bash
+uv run python scripts/merge_lora_adapter.py \
+    --base-model ~/models/qwen3-14b-base \
+    --adapter-path ./models/qwen3-therapeutic/adapter \
+    --output-dir ./models/qwen3-therapeutic/merged
+```
+
+This loads in bfloat16 (~28GB RAM for 14B model) and saves the merged model.
+
+**Step 4: Convert to GGUF**
+```bash
+# IMPORTANT: Use cloned llama.cpp, NOT Homebrew version
+uv run python ~/llama.cpp/convert_hf_to_gguf.py \
+    --outtype bf16 \
+    --outfile ./models/qwen3-therapeutic/therapeutic-qwen3-14b-bf16.gguf \
+    ./models/qwen3-therapeutic/merged
+```
+
+**Step 5: Quantize**
+```bash
+# Homebrew llama-quantize works fine for this step
+llama-quantize \
+    ./models/qwen3-therapeutic/therapeutic-qwen3-14b-bf16.gguf \
+    ./models/qwen3-therapeutic/therapeutic-qwen3-14b-q4_k_m.gguf \
+    Q4_K_M
+```
+
+Quantization reduces file size: 28GB (bf16) → 8.4GB (Q4_K_M).
+
+**Step 6: Test Locally**
+```bash
+llama-server -m ./models/qwen3-therapeutic/therapeutic-qwen3-14b-q4_k_m.gguf --port 8080 -ngl 99
+```
+
+**Step 7: Upload to Hub (Optional)**
 ```python
-from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from huggingface_hub import HfApi, create_repo
 
-base_model = AutoModelForCausalLM.from_pretrained(
-    "google/gemma-3-12b-it",
-    torch_dtype="auto",
-    device_map="auto",
+api = HfApi()
+create_repo("username/model-gguf", exist_ok=True)
+api.upload_file(
+    path_or_fileobj="therapeutic-qwen3-14b-q4_k_m.gguf",
+    path_in_repo="therapeutic-qwen3-14b-q4_k_m.gguf",
+    repo_id="username/model-gguf",
 )
-
-model = PeftModel.from_pretrained(base_model, adapter_path)
-merged = model.merge_and_unload()
-
-merged.save_pretrained("./merged")
-tokenizer = AutoTokenizer.from_pretrained("google/gemma-3-12b-it")
-tokenizer.save_pretrained("./merged")
 ```
 
-### Step 3: Convert to GGUF
+### Automated Script
+
+Use `scripts/convert_to_gguf.py` for end-to-end conversion:
 
 ```bash
-# Clone llama.cpp
-git clone https://github.com/ggerganov/llama.cpp
+# Prerequisites: clone llama.cpp (not Homebrew!)
+git clone https://github.com/ggerganov/llama.cpp ~/llama.cpp
 
-# Convert
-python llama.cpp/convert_hf_to_gguf.py ./merged --outtype q4_k_m
+# Convert Qwen adapter to GGUF
+uv run python scripts/convert_to_gguf.py \
+    --adapter-repo username/therapeutic-qwen3-14b \
+    --base-model Qwen/Qwen3-14B \
+    --output-dir ./models/qwen3-therapeutic
+
+# Convert AND upload to HuggingFace Hub
+uv run python scripts/convert_to_gguf.py \
+    --adapter-repo username/therapeutic-gemma3-12b \
+    --base-model google/gemma-3-12b-it \
+    --output-dir ./models/gemma3-therapeutic \
+    --upload
 ```
 
-### Step 4: Test Locally
-
-```bash
-# Run
-llama-server -m merged-q4_k_m.gguf --port 8080 -ngl 99
-```
+**Script options:**
+- `--quant-type`: Quantization type (default: `q4_k_m`)
+- `--cpu`: Use CPU for merging with bfloat16 (default, ~28GB RAM for 14B)
+- `--skip-download`: Use existing adapter in output-dir
+- `--skip-merge`: Use existing merged model
+- `--upload`: Upload GGUF to HuggingFace Hub
+- `--gguf-repo`: Custom repo name for upload
 
 ---
 
@@ -468,10 +552,58 @@ llama-server -m merged-q4_k_m.gguf --port 8080 -ngl 99
 ### Protocol
 
 1. **Generate NEW personas** (10-15, not used in training)
-2. **For each persona:** Generate 3 conversations with BOTH models
-3. **Same user simulator** for both (controlled comparison)
+2. **For each persona:** Generate 3 conversations with EACH model
+3. **Same user simulator** for all (controlled comparison)
 4. **Assess all conversations** with your rubric
-5. **Statistical comparison**
+5. **Statistical comparison** (paired t-test)
+
+### Multi-Model Comparison Workflow
+
+When comparing multiple fine-tuned models (e.g., Gemma vs Qwen):
+
+**Step 1: Generate evaluation personas**
+```bash
+# Uses seeds 9000+ to avoid overlap with training (0-4999)
+uv run python scripts/generate_eval_personas.py --count 15
+# Output: data/eval/personas.json
+```
+
+**Step 2: Start model servers on different ports**
+```bash
+# Terminal 1: Baseline
+llama-server -m gemma-3-12b-it.gguf --port 8080 -ngl 99
+
+# Terminal 2: Fine-tuned Gemma
+llama-server -m therapeutic-gemma.gguf --port 8081 -ngl 99
+
+# Terminal 3: Fine-tuned Qwen
+llama-server -m therapeutic-qwen.gguf --port 8082 -ngl 99
+```
+
+**Step 3: Run 3-way comparison**
+```bash
+uv run python scripts/run_model_evaluation.py \
+    --personas data/eval/personas.json \
+    --output-dir data/eval/results \
+    --baseline-port 8080 \
+    --gemma-port 8081 \
+    --qwen-port 8082
+```
+
+**Step 4: Review report**
+Report saved to `data/eval/results/evaluation_report.md` with:
+- Per-model statistics (mean, std, pass rate)
+- Pairwise comparisons with p-values
+- Category breakdown
+
+### Evaluation Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/generate_eval_personas.py` | Generate NEW personas for evaluation |
+| `scripts/run_model_evaluation.py` | Run full 3-way comparison |
+| `scripts/merge_lora_adapter.py` | Merge LoRA adapter with base model (bfloat16, ~28GB RAM) |
+| `scripts/convert_to_gguf.py` | End-to-end: download, merge, convert, optionally upload |
 
 ### Statistical Test
 
@@ -482,6 +614,7 @@ import numpy as np
 base_scores = [...]
 finetuned_scores = [...]
 
+# Paired t-test (same personas, same user simulator)
 t_stat, p_value = stats.ttest_rel(finetuned_scores, base_scores)
 
 improvement = np.mean(finetuned_scores) - np.mean(base_scores)
@@ -492,6 +625,8 @@ print(f"p-value: {p_value:.4f}")
 print(f"Significant: {p_value < 0.05}")
 ```
 
+**Why paired t-test:** Each persona generates conversations with both models using the same user simulator, making the samples paired. This increases statistical power.
+
 ### Success Criteria
 
 | Metric | Threshold |
@@ -499,6 +634,12 @@ print(f"Significant: {p_value < 0.05}")
 | Absolute improvement | ≥0.10 (10 points) |
 | Statistical significance | p < 0.05 |
 | Safety regressions | None |
+
+### Recommended Sample Size
+
+- **15 personas × 3 conversations = 45 samples per model**
+- This provides statistical power to detect ~10% improvement at p < 0.05
+- More personas = more power, but diminishing returns after ~20
 
 ---
 
@@ -523,8 +664,50 @@ Training loss doesn't decrease?
 CLI issues?
 ├── Flags ignored → Flags must come BEFORE script path
 ├── "unrecognized arguments" → Use --secrets (plural), not --secret
-└── Job not found → Check hf auth login status
+├── Job not found → Check hf auth login status
+└── TTY/socket errors with hf jobs ps → Use Python API fallback (see below)
+
+Job shows ERROR but adapter exists?
+├── Calculate expected steps: (examples ÷ batch_size) × epochs
+├── Check adapter repo for checkpoint matching final step
+└── Job may have completed but timed out on push → Safe to use adapter
 ```
+
+### HF Jobs API Fallback
+
+When `hf jobs ps` fails with TTY/socket errors, use the Python API directly:
+
+```python
+import requests
+
+# Get your jobs
+resp = requests.get(
+    "https://huggingface.co/api/jobs/YOUR_USERNAME",
+    headers={"Authorization": f"Bearer {HF_TOKEN}"}
+)
+
+for job in resp.json()["jobs"]:
+    print(f"{job['metadata']['jobId']}: {job['status']} - step {job.get('step', 'N/A')}")
+```
+
+### Training Completion Detection
+
+HF Jobs can timeout after training completes but before final push. To verify:
+
+1. **Calculate expected steps:**
+   ```
+   steps = (num_examples ÷ batch_size) × num_epochs
+   Example: (1294 ÷ 8) × 3 = 486 steps
+   ```
+
+2. **Check adapter repo for final checkpoint:**
+   - Look for `adapter_model.safetensors` commit message like "step 486"
+   - If step matches expected total, training completed successfully
+
+3. **Download and use the adapter:**
+   ```bash
+   hf download username/model-adapter --local-dir ./adapter
+   ```
 
 ---
 
