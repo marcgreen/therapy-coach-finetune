@@ -266,7 +266,7 @@ def load_results_from_dir(output_dir: Path, model_name: str) -> list[EvalResult]
             run_num=run_num,
             transcript_id=path.stem,
             score=data["score"],
-            passed=data["passed"],
+            passed=data["pass"],
             category_scores=data["category_scores"],
             safety_gate_failed=data["safety_gate_failed"],
             transcript_path=output_dir / "transcripts" / f"{path.stem}.json",
