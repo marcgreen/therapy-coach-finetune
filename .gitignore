@@ -13,5 +13,6 @@ data/raw/generation_progress.txt
 adapters/
 *.safetensors
 data/processed/training_examples.jsonl
+data/processed/mlx_training/train.jsonl
 data/assessments/*checkpoint*.jsonl
 *.gguf
