@@ -219,36 +219,53 @@ hf jobs inspect <job_id>      # Job details
 
 ### Step 6: GGUF Conversion & Upload
 
-Convert the fine-tuned adapter to GGUF and optionally upload to Hub:
+Convert the fine-tuned adapter to GGUF and optionally upload to Hub.
 
-**Automated Script (Recommended):**
+**Memory requirements:** Merging requires ~28GB RAM for 14B model (bfloat16).
+
+**Manual Workflow (Recommended for macOS):**
 ```bash
-# Prerequisites: clone llama.cpp once
+# 1. Clone llama.cpp (NOT Homebrew - version mismatch issues)
 git clone https://github.com/ggerganov/llama.cpp ~/llama.cpp
+pip install -r ~/llama.cpp/requirements.txt
 
-# Convert adapter to GGUF
-uv run python scripts/convert_to_gguf.py \
-    --adapter-repo username/therapeutic-gemma3-12b \
-    --base-model google/gemma-3-12b-it \
-    --output-dir ./models/gemma3-therapeutic
+# 2. Download base model (resumable)
+hf download Qwen/Qwen3-14B --local-dir ~/models/qwen3-14b-base
 
-# Convert AND upload to HuggingFace Hub
+# 3. Download adapter
+hf download username/therapeutic-qwen3-14b --local-dir ./models/qwen3-therapeutic/adapter
+
+# 4. Merge adapter (bfloat16, ~28GB RAM)
+uv run python scripts/merge_lora_adapter.py \
+    --base-model ~/models/qwen3-14b-base \
+    --adapter-path ./models/qwen3-therapeutic/adapter \
+    --output-dir ./models/qwen3-therapeutic/merged
+
+# 5. Convert to GGUF
+uv run python ~/llama.cpp/convert_hf_to_gguf.py \
+    --outtype bf16 \
+    --outfile ./models/qwen3-therapeutic/model-bf16.gguf \
+    ./models/qwen3-therapeutic/merged
+
+# 6. Quantize (Homebrew llama-quantize works)
+llama-quantize \
+    ./models/qwen3-therapeutic/model-bf16.gguf \
+    ./models/qwen3-therapeutic/model-q4_k_m.gguf \
+    Q4_K_M
+```
+
+**Automated Script (Alternative):**
+```bash
 uv run python scripts/convert_to_gguf.py \
-    --adapter-repo username/therapeutic-gemma3-12b \
-    --base-model google/gemma-3-12b-it \
-    --output-dir ./models/gemma3-therapeutic \
+    --adapter-repo username/therapeutic-qwen3-14b \
+    --base-model Qwen/Qwen3-14B \
+    --output-dir ./models/qwen3-therapeutic \
     --upload
 ```
 
-**Script options:**
-- `--quant-type`: Quantization type (`q4_k_m`, `q5_k_m`, `q8_0`, etc.)
-- `--upload`: Upload GGUF to HuggingFace Hub after conversion
-- `--gguf-repo`: Custom repo name for upload (default: adapter-repo + `-gguf`)
-- `--cpu`: Use CPU for merging (slower but less VRAM)
-
 **Test locally:**
 ```bash
-llama-server -m ./models/gemma3-therapeutic/model-q4_k_m.gguf --port 8080 -ngl 99
+llama-server -m ./models/qwen3-therapeutic/model-q4_k_m.gguf --port 8080 -ngl 99
 ```
 
 **Reference:** [training-guide.md#gguf-conversion](training-guide.md#gguf-conversion)
@@ -293,7 +310,8 @@ uv run python scripts/run_model_evaluation.py \
 |--------|---------|
 | `scripts/generate_eval_personas.py` | Generate NEW personas for evaluation |
 | `scripts/run_model_evaluation.py` | Run multi-model comparison with statistical tests |
-| `scripts/convert_to_gguf.py` | Convert adapters and optionally upload |
+| `scripts/merge_lora_adapter.py` | Merge LoRA adapter with base model (bfloat16) |
+| `scripts/convert_to_gguf.py` | End-to-end: download, merge, convert, upload |
 
 **Success criteria:**
 - **Improvement:** ≥10% absolute improvement over baseline
