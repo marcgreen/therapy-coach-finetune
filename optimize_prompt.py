@@ -4,8 +4,7 @@ Extracts conversation scenarios from existing passing transcripts,
 uses the base model (via llama-server) to generate responses,
 and uses the existing assessor rubric as the optimization metric.
 
-Supports both MIPROv2 (instruction + few-shot optimization) and
-GEPA (feedback-driven genetic prompt evolution).
+Uses Claude CLI (Haiku 4.5) as the judge — free with your plan.
 
 Prerequisites:
     # Start the base model server
@@ -18,12 +17,14 @@ Usage:
     # Medium run (20 examples)
     uv run python optimize_prompt.py --num-examples 20 --auto medium
 
-    # Use GEPA instead of MIPROv2
-    uv run python optimize_prompt.py --optimizer gepa --auto light
+    # Use MIPROv2 instead of GEPA (no checkpointing)
+    uv run python optimize_prompt.py --optimizer mipro --auto light
+
+    # Resume interrupted GEPA run (auto if same log-dir)
+    uv run python optimize_prompt.py --num-examples 20 --auto medium
 """
 
 import argparse
-import asyncio
 import json
 import logging
 import sys
@@ -32,6 +33,9 @@ from pathlib import Path
 from typing import Any
 
 import dspy
+from dspy.adapters.types import History
+from dspy.teleprompt.gepa.gepa import ScoreWithFeedback
+from dspy.utils.syncify import run_async
 
 from assessor import (
     AssessmentResult,
@@ -58,13 +62,9 @@ def load_examples(
     """Load conversation scenarios from passing transcripts.
 
     For each transcript, extracts a mid-conversation scenario:
-    - conversation_history: formatted exchanges 1..N-1
-    - user_message: the Nth user message
-    - gold_response: the Nth assistant response (for few-shot demos)
-    - full_turns: all N turns as list of dicts (for assessment context)
-
-    Picks exchange N = min(5, len(exchanges)) to ensure enough
-    conversation history for meaningful assessment.
+    - history: prior exchanges as dspy.History (proper chat turns)
+    - user_message: the target user message
+    - response: the gold assistant response (for few-shot demos)
     """
     with open(PASSING_TRANSCRIPTS_PATH) as f:
         manifest = json.load(f)
@@ -86,31 +86,29 @@ def load_examples(
         if len(exchanges) < min_exchanges:
             continue
 
-        # Pick a target exchange with enough prior context
-        target_idx = min(4, len(exchanges) - 1)  # 0-indexed, so exchange 5
+        # Pick exchange 5 (0-indexed: 4) — enough context for meaningful assessment
+        target_idx = min(4, len(exchanges) - 1)
 
-        # Build conversation history (prior exchanges)
-        history_lines: list[str] = []
-        prior_turns: list[dict[str, str]] = []
-        for ex in exchanges[:target_idx]:
-            history_lines.append(f"User: {ex['user']}")
-            history_lines.append(f"Assistant: {ex['assistant']}")
-            prior_turns.append({"user": ex["user"], "assistant": ex["assistant"]})
-
-        conversation_history = (
-            "\n\n".join(history_lines) if history_lines else "(start of conversation)"
-        )
-        user_message = exchanges[target_idx]["user"]
-        gold_response = exchanges[target_idx]["assistant"]
+        # Build history as dspy.History for proper chat formatting
+        history_messages = [
+            {
+                "user_message": ex["user"],
+                "response": ex["assistant"],
+            }
+            for ex in exchanges[:target_idx]
+        ]
 
         example = dspy.Example(
-            conversation_history=conversation_history,
-            user_message=user_message,
-            response=gold_response,
-            # Stash metadata for the metric (not DSPy fields)
+            history=History(messages=history_messages),
+            user_message=exchanges[target_idx]["user"],
+            response=exchanges[target_idx]["assistant"],
+            # Metadata for metric (not DSPy input fields)
             transcript_id=entry["id"],
-            prior_turns=prior_turns,
-        ).with_inputs("conversation_history", "user_message")
+            prior_turns=[
+                {"user": ex["user"], "assistant": ex["assistant"]}
+                for ex in exchanges[:target_idx]
+            ],
+        ).with_inputs("history", "user_message")
 
         examples.append(example)
 
@@ -125,7 +123,7 @@ def load_examples(
 
 
 # =============================================================================
-# DSPy Signature & Module
+# DSPy Signature
 # =============================================================================
 
 
@@ -136,9 +134,7 @@ class TherapistRespond(dspy.Signature):
     Match their energy and length. Address all topics they raise.
     Stay warm and natural, not clinical or formulaic."""
 
-    conversation_history: str = dspy.InputField(
-        desc="Previous exchanges in the conversation"
-    )
+    history: History = dspy.InputField(desc="Previous exchanges in the conversation")
     user_message: str = dspy.InputField(desc="The user's current message to respond to")
     response: str = dspy.OutputField(
         desc="Your therapeutic coaching response, warm and natural"
@@ -150,60 +146,8 @@ class TherapistRespond(dspy.Signature):
 # =============================================================================
 
 
-def make_metric(judge_backend: str, judge_model: str | None) -> Callable[..., float]:
-    """Create the assessment metric function.
-
-    Returns a function compatible with both MIPROv2 (returns float)
-    and GEPA (returns ScoreWithFeedback).
-    """
-    # Initialize the assessor backend once
-    get_backend(backend_type=judge_backend, model=judge_model)
-
-    def metric(
-        example: dspy.Example,
-        pred: dspy.Prediction,
-        trace: object = None,
-        **kwargs: object,
-    ) -> float:
-        """Assess a predicted response using the full rubric."""
-        response_text = pred.response
-        if not response_text or not response_text.strip():
-            return 0.0
-
-        # Build full conversation: prior turns + new exchange
-        turns: list[ConversationTurn] = []
-        for t in example.prior_turns:
-            turns.append(ConversationTurn(user=t["user"], assistant=t["assistant"]))
-        turns.append(
-            ConversationTurn(user=example.user_message, assistant=response_text)
-        )
-
-        conversation = ConversationInput(turns=turns)
-
-        try:
-            result: AssessmentResult = asyncio.run(
-                assess_conversation(
-                    conversation,
-                    require_min_turns=False,
-                    conversation_id=example.transcript_id,
-                )
-            )
-            logger.info(
-                f"  [{example.transcript_id}] score={result.score:.3f} "
-                f"passed={result.passed} safety={not result.safety_gate_failed}"
-            )
-            return result.score
-        except Exception as e:
-            logger.warning(f"  Assessment failed for {example.transcript_id}: {e}")
-            return 0.0
-
-    return metric
-
-
-def make_gepa_metric(judge_backend: str, judge_model: str | None) -> Callable[..., Any]:
-    """Create a GEPA-compatible metric that returns ScoreWithFeedback."""
-    from dspy.teleprompt.gepa.gepa import ScoreWithFeedback
-
+def make_metric(judge_backend: str, judge_model: str | None) -> Callable[..., Any]:
+    """Create assessment metric. Returns ScoreWithFeedback (works for both GEPA and MIPROv2)."""
     get_backend(backend_type=judge_backend, model=judge_model)
 
     def metric(
@@ -212,14 +156,20 @@ def make_gepa_metric(judge_backend: str, judge_model: str | None) -> Callable[..
         trace: object = None,
         **kwargs: object,
     ) -> ScoreWithFeedback:
-        """Assess with feedback for GEPA's genetic evolution."""
+        """Assess a predicted response using the full rubric.
+
+        Returns ScoreWithFeedback — GEPA uses the feedback for evolution,
+        MIPROv2 just reads the .score float.
+        """
         response_text = pred.response
         if not response_text or not response_text.strip():
             return ScoreWithFeedback(score=0.0, feedback="Empty response generated.")
 
-        turns: list[ConversationTurn] = []
-        for t in example.prior_turns:
-            turns.append(ConversationTurn(user=t["user"], assistant=t["assistant"]))
+        # Build full conversation: prior turns + new exchange
+        turns = [
+            ConversationTurn(user=t["user"], assistant=t["assistant"])
+            for t in example.prior_turns
+        ]
         turns.append(
             ConversationTurn(user=example.user_message, assistant=response_text)
         )
@@ -227,7 +177,7 @@ def make_gepa_metric(judge_backend: str, judge_model: str | None) -> Callable[..
         conversation = ConversationInput(turns=turns)
 
         try:
-            result: AssessmentResult = asyncio.run(
+            result: AssessmentResult = run_async(
                 assess_conversation(
                     conversation,
                     require_min_turns=False,
@@ -235,25 +185,24 @@ def make_gepa_metric(judge_backend: str, judge_model: str | None) -> Callable[..
                 )
             )
 
-            # Build feedback from failed criteria
-            feedback_parts: list[str] = []
-            for criterion_id in result.failed_checks:
-                reasoning = result.reasonings.get(criterion_id, "")
-                if reasoning:
-                    feedback_parts.append(f"{criterion_id}: {reasoning}")
-
+            # Build feedback from failed criteria for GEPA
+            feedback_parts = [
+                f"{cid}: {result.reasonings.get(cid, '')}"
+                for cid in result.failed_checks
+                if result.reasonings.get(cid)
+            ]
             if result.safety_gate_failed:
-                for criterion_id in result.failed_safety:
-                    reasoning = result.reasonings.get(criterion_id, "")
-                    feedback_parts.append(f"SAFETY {criterion_id}: {reasoning}")
-
+                feedback_parts.extend(
+                    f"SAFETY {cid}: {result.reasonings.get(cid, '')}"
+                    for cid in result.failed_safety
+                )
             feedback = (
                 "\n".join(feedback_parts) if feedback_parts else "All criteria passed."
             )
 
             logger.info(
                 f"  [{example.transcript_id}] score={result.score:.3f} "
-                f"failed={result.failed_checks}"
+                f"passed={result.passed} failed={result.failed_checks}"
             )
             return ScoreWithFeedback(score=result.score, feedback=feedback)
 
@@ -274,21 +223,14 @@ def evaluate_baseline(
     examples: list[dspy.Example],
     metric_fn: Callable[..., Any],
 ) -> float:
-    """Run the unoptimized module on examples and return mean score."""
+    """Run module on examples and return mean score."""
     scores: list[float] = []
     for ex in examples:
-        pred = module(
-            conversation_history=ex.conversation_history,
-            user_message=ex.user_message,
-        )
-        score = metric_fn(ex, pred)
-        # GEPA metric returns ScoreWithFeedback, extract float
-        if hasattr(score, "score"):
-            score = score.score
-        scores.append(score)
+        pred = module(history=ex.history, user_message=ex.user_message)
+        result = metric_fn(ex, pred)
+        scores.append(result.score if hasattr(result, "score") else float(result))
 
-    mean = sum(scores) / len(scores) if scores else 0.0
-    return mean
+    return sum(scores) / len(scores) if scores else 0.0
 
 
 # =============================================================================
@@ -308,9 +250,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--optimizer",
-        choices=["mipro", "gepa"],
-        default="mipro",
-        help="Optimizer to use (default: mipro)",
+        choices=["gepa", "mipro"],
+        default="gepa",
+        help="Optimizer: gepa (default, has checkpointing) or mipro",
     )
     parser.add_argument(
         "--auto",
@@ -325,14 +267,19 @@ def main() -> None:
     )
     parser.add_argument(
         "--judge-backend",
-        choices=["openai", "google", "claude"],
-        default="openai",
-        help="Backend for assessment judge (default: openai)",
+        choices=["claude", "openai", "google"],
+        default="claude",
+        help="Backend for assessment judge (default: claude)",
     )
     parser.add_argument(
         "--judge-model",
-        default=None,
-        help="Model for assessment judge (default: backend default)",
+        default="haiku",
+        help="Model for assessment judge (default: haiku)",
+    )
+    parser.add_argument(
+        "--log-dir",
+        default="output/dspy_optimization",
+        help="Log dir for checkpointing/resume (default: output/dspy_optimization)",
     )
     parser.add_argument(
         "--output",
@@ -342,43 +289,34 @@ def main() -> None:
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     args = parser.parse_args()
 
-    # Setup logging
     setup_logging(logging.DEBUG if args.verbose else logging.INFO)
 
     # 1. Configure DSPy with the base model
     base_lm = dspy.LM(
         "openai/gemma-3-12b-it",
         api_base=args.base_model_url,
-        api_key="none",  # Local server, no key needed
+        api_key="none",
         temperature=0.7,
         max_tokens=1024,
     )
     dspy.configure(lm=base_lm)
 
     print(f"Base model: {args.base_model_url}")
-    print(f"Judge: {args.judge_backend} ({args.judge_model or 'default'})")
+    print(f"Judge: {args.judge_backend} ({args.judge_model})")
     print(f"Optimizer: {args.optimizer} (auto={args.auto})")
+    print(f"Log dir: {args.log_dir}")
     print()
 
-    # 2. Load examples
-    all_examples = load_examples(args.num_examples)
-    # Split: 70% train, 30% val
-    split = max(1, int(len(all_examples) * 0.7))
-    trainset = all_examples[:split]
-    valset = all_examples[split:] if split < len(all_examples) else all_examples[:1]
-    print(f"Train: {len(trainset)}, Val: {len(valset)}")
+    # 2. Load examples — all used for both train and eval (n is small)
+    examples = load_examples(args.num_examples)
 
     # 3. Create module and metric
     module = dspy.Predict(TherapistRespond)
-
-    if args.optimizer == "gepa":
-        metric_fn = make_gepa_metric(args.judge_backend, args.judge_model)
-    else:
-        metric_fn = make_metric(args.judge_backend, args.judge_model)
+    metric_fn = make_metric(args.judge_backend, args.judge_model)
 
     # 4. Baseline evaluation
     print("\n--- Baseline (unoptimized) ---")
-    baseline_score = evaluate_baseline(module, valset, metric_fn)
+    baseline_score = evaluate_baseline(module, examples, metric_fn)
     print(f"Baseline mean score: {baseline_score:.3f}")
 
     # 5. Optimize
@@ -388,12 +326,10 @@ def main() -> None:
         optimizer = dspy.GEPA(
             metric=metric_fn,
             auto=args.auto,
-            num_threads=1,  # Sequential for local model
+            num_threads=1,
+            log_dir=args.log_dir,  # Enables checkpoint/resume
         )
-        optimized = optimizer.compile(
-            module,
-            trainset=trainset,
-        )
+        optimized = optimizer.compile(module, trainset=examples)
     else:
         optimizer = dspy.MIPROv2(
             metric=metric_fn,
@@ -402,30 +338,28 @@ def main() -> None:
             max_bootstrapped_demos=2,
             max_labeled_demos=2,
             verbose=args.verbose,
+            log_dir=args.log_dir,
         )
         optimized = optimizer.compile(
             module,
-            trainset=trainset,
-            valset=valset,
+            trainset=examples,
             requires_permission_to_run=False,
         )
 
     # 6. Evaluate optimized
     print("\n--- Optimized ---")
-    optimized_score = evaluate_baseline(optimized, valset, metric_fn)
+    optimized_score = evaluate_baseline(optimized, examples, metric_fn)
     print(f"Optimized mean score: {optimized_score:.3f}")
     print(f"Improvement: {optimized_score - baseline_score:+.3f}")
 
-    # 7. Extract and save results
-    # Get the optimized instruction (system prompt)
+    # 7. Save results
     optimized_instruction = optimized.signature.instructions
     print(f"\n--- Optimized Prompt ---\n{optimized_instruction}\n")
 
-    # Save
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    results = {
+    results: dict[str, Any] = {
         "optimizer": args.optimizer,
         "auto": args.auto,
         "num_examples": args.num_examples,
@@ -435,7 +369,6 @@ def main() -> None:
         "optimized_instruction": optimized_instruction,
     }
 
-    # Try to extract few-shot demos if available
     if hasattr(optimized, "demos") and optimized.demos:
         results["num_demos"] = len(optimized.demos)
         results["demos"] = [
@@ -449,7 +382,7 @@ def main() -> None:
     with open(output_path, "w") as f:
         json.dump(results, f, indent=2)
 
-    print(f"\nResults saved to {output_path}")
+    print(f"Results saved to {output_path}")
 
 
 if __name__ == "__main__":
